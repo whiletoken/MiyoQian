@@ -32,7 +32,7 @@ from ..core.config import (
     validate_unique_account_uids,
 )
 from ..core.http import ApiClient
-from ..core.logs import append_log, configure_logger, format_line, print_startup_banner
+from ..core.logs import append_log, configure_logger, format_line, print_startup_banner, tail_log
 from ..tasks.shop_exchange import ShopExchange
 from .exchange_scheduler import ExchangeScheduler
 from .runner import run_tasks
@@ -74,7 +74,7 @@ class WebApp:
         self.log_file = log_path(config_path, self.config)
         configure_logger(self.log_file)
         self.lock = threading.RLock()
-        self.logs: list[str] = []
+        self.logs: list[str] = tail_log(self.log_file, lines=150)
         self.login_state: dict[str, Any] = {"running": False, "status": "idle"}
         self._qr_refresh = threading.Event()
         self._login_cancel = threading.Event()
@@ -150,6 +150,9 @@ class WebApp:
         }
 
     def start(self) -> None:
+        now_dt = datetime.now().astimezone()
+        tz_str = now_dt.strftime("%Z (UTC%z)")
+        self.log(f"系统服务启动: 当前系统时间 {now_dt.strftime('%Y-%m-%d %H:%M:%S')}，时区 {tz_str}", "system")
         self.scheduler.start()
         self.exchange_scheduler.start()
 
@@ -166,6 +169,13 @@ class WebApp:
         append_log(log_file, line, component=component)
 
     def run_all(self) -> list[str]:
+        # 执行前动态重载磁盘上的最新配置与账号，确保外部更新即时生效
+        try:
+            fresh_config = load_config(self.config_path)
+            with self.lock:
+                self.config = fresh_config
+        except Exception as exc:
+            self.log(f"读取最新配置文件异常: {exc}，使用当前内存配置继续", "task")
         with self.lock:
             config = self.config
         self.log("任务编排开始", "task")

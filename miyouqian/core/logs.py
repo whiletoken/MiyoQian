@@ -46,7 +46,7 @@ def append_log(path: str | pathlib.Path, line: str, component: str | None = None
 
 
 def tail_log(path: str | pathlib.Path, lines: int = 120) -> list[str]:
-    log_file = pathlib.Path(path)
+    log_file = pathlib.Path(path).resolve()
     if not log_file.exists():
         return []
     buffer: deque[str] = deque(maxlen=max(lines, 1))
@@ -58,7 +58,7 @@ def tail_log(path: str | pathlib.Path, lines: int = 120) -> list[str]:
 
 def configure_logger(path: str | pathlib.Path) -> None:
     global _configured_path, _file_sink_id, _console_sink_id
-    log_file = pathlib.Path(path)
+    log_file = pathlib.Path(path).resolve()
     if _configured_path == log_file:
         return
     log_file.parent.mkdir(parents=True, exist_ok=True)
@@ -67,7 +67,7 @@ def configure_logger(path: str | pathlib.Path) -> None:
     _console_sink_id = logger.add(
         sys.stdout,
         colorize=True,
-        enqueue=False,
+        enqueue=True,
         format=(
             "<green>{time:YYYY-MM-DD HH:mm:ss}</green>  "
             "<cyan>[{extra[component]}]</cyan>  <level>{message}</level>"
@@ -79,7 +79,7 @@ def configure_logger(path: str | pathlib.Path) -> None:
         rotation="00:00",
         retention="30 days",
         compression=None,
-        enqueue=False,
+        enqueue=True,
         format="{time:YYYY-MM-DD HH:mm:ss}  [{extra[component]}]  {message}",
     )
     _configured_path = log_file

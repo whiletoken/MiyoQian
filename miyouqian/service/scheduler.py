@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import random
 import threading
+import traceback
 from datetime import datetime, timedelta
 from typing import Any, Callable
 
@@ -23,6 +24,8 @@ class DailyScheduler:
         self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
         self._running = False
+        self._jitter_waiting = False
+        self._jitter_until: datetime | None = None
         self._next_run: datetime | None = None
         self._last_run: datetime | None = None
         self._last_error = ""
@@ -66,6 +69,9 @@ class DailyScheduler:
             return {
                 "enabled": bool(self._schedule_config().get("enable", True)),
                 "running": self._running,
+                "thread_alive": bool(self._thread and self._thread.is_alive()),
+                "jitter_waiting": self._jitter_waiting,
+                "jitter_until": self._jitter_until.isoformat(timespec="seconds") if self._jitter_until else "",
                 "next_run": self._next_run.isoformat(timespec="seconds") if self._next_run else "",
                 "last_run": self._last_run.isoformat(timespec="seconds") if self._last_run else "",
                 "last_error": self._last_error,
@@ -76,42 +82,50 @@ class DailyScheduler:
         if self._schedule_config().get("run_on_start", False):
             self.run_now()
         while not self._stop.is_set():
-            schedule = self._schedule_config()
-            if not schedule.get("enable", True):
-                with self._lock:
-                    self._next_run = None
-                self._wake.wait(timeout=30)
-                self._wake.clear()
-                continue
-            with self._lock:
-                if self._next_run is None or self._next_run <= datetime.now() - timedelta(minutes=5):
-                    log_change = self._log_next_run_on_recompute
-                    self._log_next_run_on_recompute = False
-                    self._next_run = self._compute_next_base_run(schedule, log_change=log_change)
-                next_run = self._next_run
-            wait_seconds = max((next_run - datetime.now()).total_seconds(), 0)
-            if self._wake.wait(timeout=min(wait_seconds, 60)):
-                self._wake.clear()
-                continue
-            if datetime.now() >= next_run:
-                with self._lock:
-                    if self._running:
-                        self._next_run = self._compute_next_base_run(schedule, tomorrow=True, log_change=False)
-                        continue
-                    due_run = self._next_run
-                if not self._wait_jitter(schedule, due_run):
+            try:
+                schedule = self._schedule_config()
+                if not schedule.get("enable", True):
+                    with self._lock:
+                        self._next_run = None
+                    self._wake.wait(timeout=30)
+                    self._wake.clear()
                     continue
                 with self._lock:
-                    if self._running:
-                        self._next_run = self._compute_next_base_run(schedule, tomorrow=True, log_change=False)
+                    if self._next_run is None or self._next_run <= datetime.now() - timedelta(minutes=5):
+                        log_change = self._log_next_run_on_recompute
+                        self._log_next_run_on_recompute = False
+                        self._next_run = self._compute_next_base_run(schedule, log_change=log_change)
+                    next_run = self._next_run
+                wait_seconds = max((next_run - datetime.now()).total_seconds(), 0)
+                if self._wake.wait(timeout=min(wait_seconds, 60)):
+                    self._wake.clear()
+                    continue
+                if datetime.now() >= next_run:
+                    with self._lock:
+                        if self._running:
+                            self._next_run = self._compute_next_base_run(schedule, tomorrow=True, log_change=False)
+                            continue
+                        due_run = self._next_run
+                    if not self._wait_jitter(schedule, due_run):
                         continue
-                    if self._last_run and due_run and self._last_run >= due_run:
-                        self._next_run = self._compute_next_base_run(schedule, tomorrow=True, log_change=False)
-                        continue
-                    self._running = True
-                self._run_once()
+                    with self._lock:
+                        if self._running:
+                            self._next_run = self._compute_next_base_run(schedule, tomorrow=True, log_change=False)
+                            continue
+                        if self._last_run and due_run and self._last_run >= due_run:
+                            self._next_run = self._compute_next_base_run(schedule, tomorrow=True, log_change=False)
+                            continue
+                        self._running = True
+                    self._run_once()
+                    with self._lock:
+                        self._next_run = self._compute_next_base_run(self._schedule_config(), tomorrow=True, log_change=False)
+            except Exception as exc:
+                tb = traceback.format_exc()
+                self.log(f"调度器主循环异常 (已防崩自愈并将在 10 秒后恢复): {exc}\n{tb}")
                 with self._lock:
-                    self._next_run = self._compute_next_base_run(self._schedule_config(), tomorrow=True, log_change=False)
+                    self._last_error = f"调度器循环异常: {exc}"
+                if self._stop.wait(timeout=10):
+                    break
 
     def _run_once(self) -> None:
         self.log("开始执行签到任务")
@@ -123,9 +137,10 @@ class DailyScheduler:
                 self._last_error = ""
             self.log("签到任务执行完成")
         except Exception as exc:
+            tb = traceback.format_exc()
             with self._lock:
-                self._last_error = str(exc)
-            self.log(f"签到任务失败: {exc}")
+                self._last_error = f"{exc}\n{tb}"
+            self.log(f"签到任务失败: {exc}\n{tb}")
         finally:
             with self._lock:
                 self._running = False
@@ -140,7 +155,11 @@ class DailyScheduler:
         tomorrow: bool = False,
         log_change: bool = False,
     ) -> datetime:
-        hour, minute = parse_time(str(schedule.get("time", "09:00")))
+        try:
+            hour, minute = parse_time(str(schedule.get("time", "09:00")))
+        except Exception as exc:
+            self.log(f"解析调度时间配置失败: {exc}，回退使用默认时间 09:00")
+            hour, minute = 9, 0
         base_day = datetime.now().date()
         if tomorrow:
             base_day = base_day + timedelta(days=1)
@@ -148,24 +167,50 @@ class DailyScheduler:
         if target <= datetime.now():
             return self._compute_next_base_run(schedule, tomorrow=True, log_change=log_change)
         if log_change:
-            self.log(f"下次自动执行时间: {target.strftime('%Y-%m-%d %H:%M:%S')}")
+            tz_info = datetime.now().astimezone().tzname() or "本地时区"
+            self.log(f"下次自动执行时间: {target.strftime('%Y-%m-%d %H:%M:%S')} ({tz_info})")
         return target
 
     def _wait_jitter(self, schedule: dict[str, Any], due_run: datetime | None) -> bool:
-        jitter = max(int(schedule.get("jitter_minutes", 45) or 0), 0)
+        try:
+            jitter = max(int(schedule.get("jitter_minutes", 45) or 0), 0)
+        except (TypeError, ValueError):
+            jitter = 45
         if not jitter:
             return True
         delay_seconds = random.randint(0, jitter * 60)
         if delay_seconds <= 0:
             return True
+        jitter_until = datetime.now() + timedelta(seconds=delay_seconds)
         if due_run:
             delay_min_str = f"{delay_seconds // 60}分{delay_seconds % 60}秒" if delay_seconds >= 60 else f"{delay_seconds}秒"
-            self.log(f"已到自动执行时间 {due_run.strftime('%Y-%m-%d %H:%M:%S')}，随机延后 {delay_min_str} 后执行")
+            self.log(
+                f"已到预定执行时间 {due_run.strftime('%Y-%m-%d %H:%M:%S')}，随机延后 {delay_min_str} "
+                f"（预计在 {jitter_until.strftime('%H:%M:%S')} 开始执行）"
+            )
         with self._lock:
-            self._next_run = datetime.now() + timedelta(seconds=delay_seconds)
-        if self._stop.wait(timeout=delay_seconds):
-            return False
-        return True
+            self._jitter_waiting = True
+            self._jitter_until = jitter_until
+            self._next_run = jitter_until
+            initial_signature = self._schedule_signature
+        try:
+            while not self._stop.is_set():
+                remaining = (jitter_until - datetime.now()).total_seconds()
+                if remaining <= 0:
+                    break
+                if self._wake.wait(timeout=min(remaining, 5)):
+                    self._wake.clear()
+                    # 若在延后等待期间外部修改了调度配置，及时取消延后并重新规划
+                    with self._lock:
+                        current_signature = self._schedule_signature
+                    if current_signature != initial_signature:
+                        self.log("检测到调度配置变更，取消当前随机延后等待并重新规划")
+                        return False
+        finally:
+            with self._lock:
+                self._jitter_waiting = False
+                self._jitter_until = None
+        return not self._stop.is_set()
 
     def _make_schedule_signature(self, schedule: dict[str, Any]) -> tuple[Any, ...]:
         return (

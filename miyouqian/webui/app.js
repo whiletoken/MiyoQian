@@ -1912,10 +1912,14 @@ async function refreshStatus() {
   $("accountMetric").textContent = `${loggedIn}/${accounts.length}`;
   $("scheduleMetric").textContent = scheduler.running
     ? "执行中"
-    : scheduler.enabled
-      ? "已启用"
-      : "已关闭";
-  $("nextRun").textContent = formatTime(scheduler.next_run);
+    : scheduler.jitter_waiting
+      ? "延后中"
+      : scheduler.enabled
+        ? (scheduler.thread_alive === false ? "异常停止" : "已启用")
+        : "已关闭";
+  $("nextRun").textContent = scheduler.jitter_waiting
+    ? `预计 ${formatTime(scheduler.jitter_until || scheduler.next_run)}`
+    : formatTime(scheduler.next_run);
   $("lastResult").textContent = latestResultText(scheduler, login, logs);
 
   const runningPlans = new Set(exchangeScheduler.running_plans || []);
