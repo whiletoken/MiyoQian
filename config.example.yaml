@@ -5,10 +5,11 @@ enable: true
 
 accounts:
   []
-# 账号凭据（cookie、stoken、云游戏 tokens 等）存储在 data/credentials.yaml 中
+# 账号凭据（cookie、stoken、云游戏 tokens 等）存储在 account.json 中（旧版 credentials.yaml 会自动迁移）
 
 storage:
   data_dir: data
+  account_file: account.json
   credentials_file: credentials.yaml
   log_dir: logs
   log_file: miyouqian.log

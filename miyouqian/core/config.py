@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import copy
+import os
 import pathlib
 import random
 from typing import Any
@@ -11,9 +12,13 @@ from typing import Any
 import yaml
 
 from . import crypto
-
-SENSITIVE_ACCOUNT_FIELDS = ("cookie", "stuid", "stoken", "mid")
-SUPPORTED_CLOUD_GAME_KEYS = ("genshin", "zzz")
+from .accounts import (
+    AccountRepository,
+    SENSITIVE_ACCOUNT_FIELDS,
+    SUPPORTED_CLOUD_GAME_KEYS,
+    normalize_account,
+    validate_unique_account_uids as validate_uids_impl,
+)
 
 DEFAULT_DEVICE_PRESETS: list[dict[str, str]] = [
     {"name": "Xiaomi 14", "model": "23127PN0CC"},
@@ -33,6 +38,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "accounts": [],
     "storage": {
         "data_dir": "data",
+        "account_file": "account.json",
         "credentials_file": "credentials.yaml",
         "log_dir": "logs",
         "log_file": "miyouqian.log",
@@ -80,10 +86,17 @@ DEFAULT_CONFIG: dict[str, Any] = {
 
 
 def load_config(path: str | pathlib.Path) -> dict[str, Any]:
+    """加载配置并合并 account.json 账号数据（如未迁移则自动迁移旧凭证）。"""
     config_path = pathlib.Path(path)
     if not config_path.exists():
         config = copy.deepcopy(DEFAULT_CONFIG)
         normalize_config(config)
+        repo = get_account_repository(config_path, config)
+        accounts = repo.load(legacy_config=None, legacy_creds_path=credentials_path(config_path, config))
+        if accounts:
+            config["accounts"] = accounts
+            normalize_config(config)
+            bind_shop_plan_accounts(config)
         return config
     with config_path.open("r", encoding="utf-8") as file:
         loaded = yaml.safe_load(file) or {}
@@ -91,17 +104,26 @@ def load_config(path: str | pathlib.Path) -> dict[str, Any]:
         raise ValueError(f"配置文件格式错误: {config_path}")
     config = merge_dict(copy.deepcopy(DEFAULT_CONFIG), loaded)
     normalize_config(config)
-    merge_credentials(config, load_credentials(config_path, config))
+
+    repo = get_account_repository(config_path, config)
+    accounts = repo.load(legacy_config=config, legacy_creds_path=credentials_path(config_path, config))
+    config["accounts"] = accounts
     normalize_config(config)
     bind_shop_plan_accounts(config)
     return config
 
 
 def save_config(path: str | pathlib.Path, config: dict[str, Any]) -> None:
+    """保存配置：账号凭证写入 account.json，脱敏配置写入 config.yaml。"""
     normalize_config(config)
     config_path = pathlib.Path(path)
     config_path.parent.mkdir(parents=True, exist_ok=True)
-    save_credentials(credentials_path(config_path, config), config)
+
+    # 1. 保存账号凭证到 account.json
+    repo = get_account_repository(config_path, config)
+    repo.save(config.get("accounts", []))
+
+    # 2. 保存普通脱敏配置到 config.yaml
     public_config = strip_credentials(config)
     with config_path.open("w", encoding="utf-8", newline="\n") as file:
         yaml.safe_dump(public_config, file, allow_unicode=True, sort_keys=False)
@@ -128,6 +150,7 @@ def merge_dict(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
 def normalize_config(config: dict[str, Any]) -> None:
     storage = config.setdefault("storage", {})
     storage.setdefault("data_dir", "data")
+    storage.setdefault("account_file", "account.json")
     storage.setdefault("credentials_file", "credentials.yaml")
     storage.setdefault("log_dir", "logs")
     storage.setdefault("log_file", "miyouqian.log")
@@ -332,15 +355,9 @@ def parse_int(value: Any, default: int = 0) -> int:
         return default
 
 
-def validate_unique_account_uids(config: dict[str, Any]) -> None:
-    seen: dict[str, int] = {}
-    for index, account in enumerate(config.get("accounts", []), start=1):
-        uid = str(account.get("stuid") or "").strip()
-        if not uid:
-            continue
-        if uid in seen:
-            raise ValueError(f"UID {uid} 已存在于账号 {seen[uid]}，不能重复添加同一账号")
-        seen[uid] = index
+def validate_unique_account_uids(config_or_accounts: dict[str, Any] | list[dict[str, Any]]) -> None:
+    """验证账号 UID 唯一性，兼容传入 config 字典或账号列表。"""
+    validate_uids_impl(config_or_accounts)
 
 
 def find_account_index_by_stuid(accounts: list[dict[str, Any]], stuid: str) -> int | None:
@@ -359,7 +376,6 @@ def bind_shop_plan_accounts(config: dict[str, Any]) -> None:
     计划里的 account_index 只是账号列表下标，删除或重排账号后会悄悄指向另一个账号，
     而 uid/region 仍是原账号的角色。这里按 account_stuid 重新算下标；
     还没有 account_stuid 的旧计划按当前下标补上；找不到对应账号的计划直接停用。
-    stuid 存在凭证文件里，所以必须在凭证合并之后调用，否则会把所有计划都当成账号已删除。
     """
     accounts = config.get("accounts") or []
     # 没有任何账号带 stuid（凭证文件缺失或都未登录）时没有可比对的标识，保持原样
@@ -410,6 +426,7 @@ def upsert_account(config: dict[str, Any], name: str, data: dict[str, Any]) -> d
 
 
 def load_credentials(config_path: pathlib.Path, config: dict[str, Any]) -> dict[str, Any]:
+    """向后兼容：加载旧凭证文件。"""
     path = credentials_path(config_path, config)
     if not path.exists():
         return {"accounts": []}
@@ -422,6 +439,7 @@ def load_credentials(config_path: pathlib.Path, config: dict[str, Any]) -> dict[
 
 
 def save_credentials(path: pathlib.Path, config: dict[str, Any]) -> None:
+    """向后兼容：保存旧凭据文件。"""
     path.parent.mkdir(parents=True, exist_ok=True)
     credentials = {
         "accounts": [
@@ -444,6 +462,7 @@ def save_credentials(path: pathlib.Path, config: dict[str, Any]) -> None:
 
 
 def merge_credentials(config: dict[str, Any], credentials: dict[str, Any]) -> None:
+    """向后兼容：合并旧凭据至配置。"""
     if not config.get("accounts") and credentials.get("accounts"):
         config["accounts"] = [
             {"name": str(account.get("name") or "")}
@@ -473,6 +492,7 @@ def merge_credentials(config: dict[str, Any], credentials: dict[str, Any]) -> No
 
 
 def strip_credentials(config: dict[str, Any]) -> dict[str, Any]:
+    """脱敏配置：仅保留账号名称，移除敏感凭证与 cloud_games tokens。"""
     public_config = copy.deepcopy(config)
     for account in public_config.get("accounts", []):
         for field in SENSITIVE_ACCOUNT_FIELDS:
@@ -491,6 +511,32 @@ def merge_account_cloud_game_credentials(account: dict[str, Any], saved: dict[st
         cloud_games = {}
         account["cloud_games"] = cloud_games
     cloud_games["tokens"] = saved_tokens
+
+
+def account_path(config_path: str | pathlib.Path, config: dict[str, Any]) -> pathlib.Path:
+    """解析 account.json 路径，支持环境变量指定或配置指定，优先与 config.yaml 同级。"""
+    env_path = os.environ.get("MIYOUQIAN_ACCOUNT_PATH")
+    if env_path:
+        return pathlib.Path(env_path)
+    storage = config.get("storage", {})
+    account_file = str(storage.get("account_file") or "account.json").strip()
+    path = pathlib.Path(account_file)
+    if path.is_absolute():
+        return path
+    config_dir = pathlib.Path(config_path).parent
+    candidate_config_dir = config_dir / path
+    if candidate_config_dir.exists():
+        return candidate_config_dir
+    data_dir = resolve_storage_path(config_path, str(storage.get("data_dir") or "data"))
+    candidate_data_dir = data_dir / path
+    if candidate_data_dir.exists():
+        return candidate_data_dir
+    return candidate_config_dir
+
+
+def get_account_repository(config_path: str | pathlib.Path, config: dict[str, Any]) -> AccountRepository:
+    """获取关联当前配置路径的 AccountRepository 实例。"""
+    return AccountRepository(account_path(config_path, config))
 
 
 def credentials_path(config_path: str | pathlib.Path, config: dict[str, Any]) -> pathlib.Path:

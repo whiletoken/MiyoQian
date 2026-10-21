@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-"""验证码识别渠道。"""
+"""验证码识别渠道（策略模式与工厂模式）。"""
 
 from __future__ import annotations
 
+import abc
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping
@@ -31,6 +32,134 @@ class CaptchaSolution:
     challenge: str
 
 
+class CaptchaSolver(abc.ABC):
+    """验证码识别策略基类（Strategy 模式）。"""
+
+    def __init__(self, channel: dict[str, Any]) -> None:
+        self.channel = channel
+
+    @abc.abstractmethod
+    def solve(
+        self,
+        client: ApiClient,
+        gt: str,
+        challenge: str,
+        geetest_success: int | None = None,
+        emit: Callable[[str], None] | None = None,
+    ) -> CaptchaSolution | None:
+        """执行验证码识别。"""
+
+
+class DamagouCaptchaSolver(CaptchaSolver):
+    """打码狗验证码识别策略。"""
+
+    def solve(
+        self,
+        client: ApiClient,
+        gt: str,
+        challenge: str,
+        geetest_success: int | None = None,
+        emit: Callable[[str], None] | None = None,
+    ) -> CaptchaSolution | None:
+        try:
+            params: dict[str, Any] = {
+                "userkey": str(self.channel.get("userkey") or "").strip(),
+                "gt": gt,
+                "challenge": challenge,
+                "isJson": "2",
+            }
+            captcha_type = str(self.channel.get("type") or "").strip()
+            if captcha_type:
+                params["type"] = captcha_type
+            if geetest_success == 0:
+                params["success"] = 0
+            # 识别请求不做读超时重试：服务端可能已经开始识别（且按次计费），重发会白等数倍时间
+            data = client.get_json(
+                DAMAGOU_URL,
+                params=params,
+                timeout=float(self.channel.get("timeout") or 60),
+                retries=0,
+            )
+            if is_damagou_balance_insufficient(data):
+                if emit:
+                    emit(DAMAGOU_BALANCE_INSUFFICIENT_MESSAGE)
+                return None
+            solution = _parse_damagou_response(data)
+            if not solution and emit:
+                emit(f"打码狗验证码识别失败: {data.get('msg') or '未知错误'}")
+            return solution
+        except Exception as exc:
+            if emit:
+                emit(f"打码狗验证码识别失败: {exc}")
+            return None
+
+
+class CustomCaptchaSolver(CaptchaSolver):
+    """调用遵循《自定义打码接口规范》的服务，规范见 webui/custom-captcha-api.md。"""
+
+    def solve(
+        self,
+        client: ApiClient,
+        gt: str,
+        challenge: str,
+        geetest_success: int | None = None,
+        emit: Callable[[str], None] | None = None,
+    ) -> CaptchaSolution | None:
+        def fail(reason: str) -> None:
+            if emit:
+                emit(f"自定义接口验证码识别失败: {reason}")
+
+        try:
+            url = str(self.channel.get("url") or "").strip()
+            params = {"gt": gt, "challenge": challenge}
+            api_key = str(self.channel.get("api_key") or "").strip()
+            headers = {"X-API-Key": api_key} if api_key else {}
+            timeout = float(self.channel.get("timeout") or CUSTOM_DEFAULT_TIMEOUT)
+            for attempt in range(1, CUSTOM_MAX_ATTEMPTS + 1):
+                # 读超时不重试，challenge 用过即作废，交给调用方重新取验证码
+                data, response_headers = client.get_json_any_status(
+                    url, params=params, headers=headers, timeout=timeout, retries=0
+                )
+                code = _response_code(data)
+                if code == 0:
+                    solution = _parse_custom_response(data, challenge)
+                    if not solution:
+                        fail("接口返回成功但缺少 data.validate")
+                    return solution
+                if attempt < CUSTOM_MAX_ATTEMPTS and code in CUSTOM_RETRY_WITH_DELAY:
+                    delay = _retry_after_seconds(response_headers)
+                    if delay <= CUSTOM_MAX_WAIT_SECONDS:
+                        time.sleep(delay)
+                        continue
+                fail(_format_custom_error(data, code))
+                return None
+        except Exception as exc:
+            fail(str(exc))
+        return None
+
+
+class CaptchaSolverFactory:
+    """验证码识别器工厂（Factory 模式）。"""
+
+    _solvers: dict[str, type[CaptchaSolver]] = {
+        "damagou": DamagouCaptchaSolver,
+        "custom": CustomCaptchaSolver,
+    }
+
+    @classmethod
+    def register(cls, provider: str, solver_cls: type[CaptchaSolver]) -> None:
+        """注册新的识别器策略，遵循开闭原则。"""
+        cls._solvers[provider] = solver_cls
+
+    @classmethod
+    def create(cls, channel: dict[str, Any]) -> CaptchaSolver | None:
+        provider = str(channel.get("provider") or "").strip()
+        solver_cls = cls._solvers.get(provider)
+        if not solver_cls:
+            return None
+        return solver_cls(channel)
+
+
 def is_enabled(config: dict[str, Any]) -> bool:
     return _active_channel(config) is not None
 
@@ -50,7 +179,13 @@ def solve_game_captcha(
     challenge: str,
     emit: Callable[[str], None] | None = None,
 ) -> CaptchaSolution | None:
-    return _solve(client, config, gt, challenge, None, emit)
+    channel = _active_channel(config)
+    if not channel:
+        return None
+    solver = CaptchaSolverFactory.create(channel)
+    if not solver:
+        return None
+    return solver.solve(client, gt, challenge, geetest_success=None, emit=emit)
 
 
 def solve_bbs_captcha(
@@ -61,104 +196,13 @@ def solve_bbs_captcha(
     geetest_success: int | None = None,
     emit: Callable[[str], None] | None = None,
 ) -> CaptchaSolution | None:
-    return _solve(client, config, gt, challenge, geetest_success, emit)
-
-
-def _solve(
-    client: ApiClient,
-    config: dict[str, Any],
-    gt: str,
-    challenge: str,
-    geetest_success: int | None,
-    emit: Callable[[str], None] | None,
-) -> CaptchaSolution | None:
     channel = _active_channel(config)
     if not channel:
         return None
-    if channel.get("provider") == "custom":
-        return _solve_custom(client, config, channel, gt, challenge, emit)
-    return _solve_damagou(client, config, channel, gt, challenge, geetest_success, emit)
-
-
-def _solve_damagou(
-    client: ApiClient,
-    config: dict[str, Any],
-    channel: dict[str, Any],
-    gt: str,
-    challenge: str,
-    geetest_success: int | None,
-    emit: Callable[[str], None] | None,
-) -> CaptchaSolution | None:
-    try:
-        params: dict[str, Any] = {
-            "userkey": str(channel.get("userkey") or "").strip(),
-            "gt": gt,
-            "challenge": challenge,
-            "isJson": "2",
-        }
-        captcha_type = str(channel.get("type") or "").strip()
-        if captcha_type:
-            params["type"] = captcha_type
-        if geetest_success == 0:
-            params["success"] = 0
-        # 识别请求不做读超时重试：服务端可能已经开始识别（且按次计费），重发会白等数倍时间
-        data = client.get_json(DAMAGOU_URL, params=params, timeout=float(channel.get("timeout") or 60), retries=0)
-        if is_damagou_balance_insufficient(data):
-            if emit:
-                emit(DAMAGOU_BALANCE_INSUFFICIENT_MESSAGE)
-            return None
-        solution = _parse_damagou_response(data)
-        if not solution and emit:
-            emit(f"{active_provider_label(config)}验证码识别失败: {data.get('msg') or '未知错误'}")
-        return solution
-    except Exception as exc:
-        if emit:
-            emit(f"{active_provider_label(config)}验证码识别失败: {exc}")
+    solver = CaptchaSolverFactory.create(channel)
+    if not solver:
         return None
-
-
-def _solve_custom(
-    client: ApiClient,
-    config: dict[str, Any],
-    channel: dict[str, Any],
-    gt: str,
-    challenge: str,
-    emit: Callable[[str], None] | None,
-) -> CaptchaSolution | None:
-    """调用遵循《自定义打码接口规范》的服务，规范见 webui/custom-captcha-api.md。"""
-    label = active_provider_label(config)
-
-    def fail(reason: str) -> None:
-        if emit:
-            emit(f"{label}验证码识别失败: {reason}")
-
-    try:
-        url = str(channel.get("url") or "").strip()
-        params = {"gt": gt, "challenge": challenge}
-        api_key = str(channel.get("api_key") or "").strip()
-        headers = {"X-API-Key": api_key} if api_key else {}
-        timeout = float(channel.get("timeout") or CUSTOM_DEFAULT_TIMEOUT)
-        for attempt in range(1, CUSTOM_MAX_ATTEMPTS + 1):
-            # 同上：读超时不重试，challenge 用过即作废，交给调用方重新取验证码
-            data, response_headers = client.get_json_any_status(
-                url, params=params, headers=headers, timeout=timeout, retries=0
-            )
-            code = _response_code(data)
-            if code == 0:
-                solution = _parse_custom_response(data, challenge)
-                if not solution:
-                    fail("接口返回成功但缺少 data.validate")
-                return solution
-            if attempt < CUSTOM_MAX_ATTEMPTS and code in CUSTOM_RETRY_WITH_DELAY:
-                delay = _retry_after_seconds(response_headers)
-                if delay <= CUSTOM_MAX_WAIT_SECONDS:
-                    time.sleep(delay)
-                    continue
-            fail(_format_custom_error(data, code))
-            return None
-    except Exception as exc:
-        fail(str(exc))
-    return None
+    return solver.solve(client, gt, challenge, geetest_success=geetest_success, emit=emit)
 
 
 def _response_code(data: Mapping[str, Any]) -> int | None:

@@ -11,8 +11,12 @@ services:
     ports:
       - "5890:5890"
     volumes:
-      # Docker 专用状态卷：配置、登录凭证和日志均保存在容器隔离环境中
+      # 方式 1：Docker 专用状态卷（推荐，包含 config.yaml, account.json, logs 等）
       - miyouqian_state:/app/state
+      # 方式 2：映射主机上的配置文件与账号文件（需先在主机创建对应文件）
+      # - ./config.yaml:/app/state/config.yaml
+      # - ./account.json:/app/state/account.json
+      # - ./logs:/app/state/logs
     environment:
       - TZ=Asia/Shanghai
     read_only: true

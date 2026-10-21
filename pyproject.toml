@@ -12,3 +12,7 @@ dependencies = [
     "pyfiglet>=1.0.2",
     "Pillow>=12.3.0",
 ]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

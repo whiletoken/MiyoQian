@@ -9,6 +9,7 @@ from typing import Any, Callable
 
 from .. import constants as c
 from ..core.http import ApiClient
+from .base import BaseTask
 
 
 class CloudGameCheckin:

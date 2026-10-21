@@ -11,9 +11,10 @@ from .. import constants as c
 from ..auth.login import refresh_cookie_token
 from ..core import captcha, crypto
 from ..core.http import ApiClient
+from .base import BaseTask
 
 
-class GameCheckin:
+class GameCheckin(BaseTask):
     def __init__(
         self,
         client: ApiClient,
@@ -21,11 +22,7 @@ class GameCheckin:
         account: dict[str, Any],
         emit: Callable[[str], None] | None = None,
     ) -> None:
-        self.client = client
-        self.config = config
-        self.account = account
-        self.device = config["device"]
-        self.emit = emit
+        super().__init__(client, config, account, emit)
 
     def run(self, only_games: list[str] | None = None) -> list[str]:
         enabled = self.config.get("games", {}).get("enabled", [])

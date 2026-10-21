@@ -49,12 +49,14 @@ Thumbs.db
 
 # ==================== 本地运行数据与凭证（通过 Docker 卷隔离） ====================
 config.yaml
+account.json
 *.yaml.bak
 /data/
 /logs/
 /state/
 *.log
 *.tmp
+*.tmp.*
 *.sqlite
 *.sqlite3
 *.db

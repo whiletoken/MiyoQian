@@ -12,9 +12,10 @@ from .. import constants as c
 from ..auth.login import refresh_cookie_token
 from ..core import captcha, cookies, crypto
 from ..core.http import ApiClient
+from .base import BaseTask
 
 
-class BbsTasks:
+class BbsTasks(BaseTask):
     def __init__(
         self,
         client: ApiClient,
@@ -22,12 +23,8 @@ class BbsTasks:
         account: dict[str, Any],
         emit: Callable[[str], None] | None = None,
     ) -> None:
-        self.client = client
-        self.config = config
-        self.account = account
+        super().__init__(client, config, account, emit)
         self.bbs_config = config.get("bbs", {})
-        self.device = config["device"]
-        self.emit = emit
 
     def run(self) -> list[str]:
         messages: list[str] = []

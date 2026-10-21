@@ -51,9 +51,10 @@ jobs:
       - name: 安装依赖
         run: uv sync --frozen --no-dev
 
-      - name: 写入配置和登录凭证
+      - name: 写入配置和账号凭证
         env:
           MIYOUQIAN_CONFIG: ${{ secrets.MIYOUQIAN_CONFIG }}
+          MIYOUQIAN_ACCOUNTS: ${{ secrets.MIYOUQIAN_ACCOUNTS }}
           MIYOUQIAN_CREDENTIALS: ${{ secrets.MIYOUQIAN_CREDENTIALS }}
         run: |
           python - <<'PY'
@@ -61,18 +62,21 @@ jobs:
           from pathlib import Path
 
           config = os.environ.get("MIYOUQIAN_CONFIG", "")
+          accounts = os.environ.get("MIYOUQIAN_ACCOUNTS", "") or os.environ.get("MIYOUQIAN_ACCOUNT", "")
           credentials = os.environ.get("MIYOUQIAN_CREDENTIALS", "")
           if not config.strip():
               raise SystemExit("缺少 GitHub Secret: MIYOUQIAN_CONFIG")
-          if not credentials.strip():
-              raise SystemExit("缺少 GitHub Secret: MIYOUQIAN_CREDENTIALS")
+          if not accounts.strip() and not credentials.strip():
+              raise SystemExit("缺少 GitHub Secret: MIYOUQIAN_ACCOUNTS 或 MIYOUQIAN_CREDENTIALS")
 
           Path("data").mkdir(exist_ok=True)
           Path("logs").mkdir(exist_ok=True)
           Path("config.yaml").write_text(config.rstrip() + "\n", encoding="utf-8")
-          Path("data/credentials.yaml").write_text(credentials.rstrip() + "\n", encoding="utf-8")
+          if accounts.strip():
+              Path("account.json").write_text(accounts.rstrip() + "\n", encoding="utf-8")
+          if credentials.strip():
+              Path("data/credentials.yaml").write_text(credentials.rstrip() + "\n", encoding="utf-8")
           PY
-
       - name: 执行签到
         env:
           RUN_MODE: ${{ inputs.mode || 'all' }}

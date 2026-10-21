@@ -80,7 +80,7 @@
 4. 点开返回成功的请求，在请求头里复制 `X-Rpc-Combo_token` 的值。
 5. 回到米游签账号行，点击云游戏图标，把值填到对应游戏的 Token 输入框。
 
-云原神和云绝区零的 Token 不通用，需要分别复制。这个 Token 属于敏感凭证，存储在 `data/credentials.yaml` 中：
+云原神和云绝区零的 Token 不通用，需要分别复制。这个 Token 属于敏感凭证，存储在 `account.json` 中（旧版 `data/credentials.yaml` 会自动迁移）：
 
 ```yaml
 # config.yaml - 配置启用哪些云游戏
@@ -319,7 +319,7 @@ ls -la /app/state
 | 文件 | 说明 |
 | --- | --- |
 | `config.yaml` | 公开配置，不建议直接提交仓库 |
-| `data/credentials.yaml` | 登录凭证，敏感信息，绝对不要提交仓库 |
+| `account.json` | 账号与登录凭证，敏感信息，绝对不要提交仓库（支持 Docker 映射） |
 
 #### 2. 创建项目并启用 Actions
 
@@ -342,7 +342,7 @@ Settings -> Secrets and variables -> Actions -> New repository secret
 | Secret 名称 | 内容 |
 | --- | --- |
 | `MIYOUQIAN_CONFIG` | 复制 `config.yaml` 的完整内容 |
-| `MIYOUQIAN_CREDENTIALS` | 复制 `data/credentials.yaml` 的完整内容 |
+| `MIYOUQIAN_ACCOUNTS` | 复制 `account.json` 的完整内容（旧版可继续用 `MIYOUQIAN_CREDENTIALS`） |
 
 粘贴时保留 YAML 原本的换行和缩进。凭证过期或账号配置变化后，重新复制最新文件内容覆盖对应 Secret 即可。
 
@@ -696,7 +696,7 @@ uv run python main.py show
 
 ```text
 config.yaml              # 账号名称、任务开关、调度等普通配置
-data/credentials.yaml    # 登录凭证
+account.json             # 用户账户数据与登录凭据（支持 Docker 映射，旧版自动迁移）
 logs/miyouqian.log       # 历史日志
 qrcode.png               # 命令行扫码登录时生成的二维码图片
 ```
@@ -705,7 +705,7 @@ qrcode.png               # 命令行扫码登录时生成的二维码图片
 
 ### 账号
 
-Web 控制台添加账号后，会在配置中保存账号名。扫码登录成功后，登录凭证会单独保存到 `data/credentials.yaml`。
+Web 控制台添加账号后，会在配置中保存账号名。扫码登录成功后，登录凭证会单独保存到 `account.json`。
 
 通常不需要手动填写 cookie 或 stoken。
 
@@ -920,7 +920,7 @@ web:
 
 ### 扫码登录后凭证保存在哪里？
 
-默认保存在 `data/credentials.yaml`。普通设置保存在 `config.yaml`。
+默认保存在 `account.json`（支持 Docker 挂载映射）。普通设置保存在 `config.yaml`。已有旧版凭据（`data/credentials.yaml`）会自动迁移至 `account.json`。
 
 ### 为什么 `config.yaml` 里看不到 cookie？
 

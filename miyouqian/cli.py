@@ -12,6 +12,7 @@ from .auth.login import QRLogin, print_qrcode
 from .core import cookies
 from .core.config import (
     create_config,
+    account_path,
     credentials_path,
     load_config,
     log_path,
@@ -75,7 +76,7 @@ def main(argv: list[str] | None = None) -> int:
 def command_init(config_path: pathlib.Path, force: bool) -> int:
     created = create_config(config_path, force=force)
     print(f"已生成配置: {created.resolve()}")
-    print("填写 cookie/stoken，或运行 `python main.py login` 扫码写入凭证。")
+    print("填写 account.json，或运行 `python main.py login` 扫码写入凭证。")
     return 0
 
 
@@ -102,7 +103,7 @@ def command_login(config_path: pathlib.Path, account_name: str, timeout: int, sa
         )
     upsert_account(config, account_name, account_data)
     save_config(config_path, config)
-    print(f"账号 {account_name} 凭证已写入: {credentials_path(config_path, config).resolve()}")
+    print(f"账号 {account_name} 凭证已写入: {account_path(config_path, config).resolve()}")
     return 0
 
 
@@ -176,7 +177,7 @@ def command_show(config_path: pathlib.Path) -> int:
         f"{schedule.get('enable', True)} "
         f"{schedule.get('time', '09:00')} +/- {schedule.get('jitter_minutes', 45)} 分钟"
     )
-    print(f"凭证文件: {credentials_path(config_path, config).resolve()}")
+    print(f"账号文件: {account_path(config_path, config).resolve()}")
     print(f"日志文件: {log_path(config_path, config).resolve()}")
     web = config.get("web", {})
     print(f"Web 控制台（配置文件中的值，启动时可被命令行参数覆盖）: {web.get('host', '127.0.0.1')}:{web.get('port', 5890)}")
