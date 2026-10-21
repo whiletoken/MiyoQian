@@ -1,16 +1,26 @@
+# -*- coding: utf-8 -*-
 """云函数入口，执行方法 index.main_handler。
 
 云函数上传的 zip 包里 config.yaml 与本文件同目录，配置路径据此定位。
 """
 
+from __future__ import annotations
+
 import os
+import pathlib
 import sys
 
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+_root = pathlib.Path(__file__).resolve().parent
+_cache_dir = _root / ".cache" / "pycache"
+if not sys.pycache_prefix:
+    sys.pycache_prefix = str(_cache_dir)
+    os.environ["PYTHONPYCACHEPREFIX"] = str(_cache_dir)
+
+sys.path.append(str(_root))
 
 from miyouqian.cli import main
 
-CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.yaml")
+CONFIG_PATH = str(_root / "config.yaml")
 
 
 def main_handler(event, context):

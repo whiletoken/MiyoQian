@@ -5,6 +5,8 @@ CONFIG_PATH="${MIYOUQIAN_CONFIG_PATH:-/app/state/config.yaml}"
 CONFIG_DIR="$(dirname "$CONFIG_PATH")"
 ACCOUNT_PATH="${MIYOUQIAN_ACCOUNT_PATH:-$CONFIG_DIR/account.json}"
 
+export PYTHONPYCACHEPREFIX="${PYTHONPYCACHEPREFIX:-/tmp/.cache/pycache}"
+
 umask 077
 
 # 创建必要的目录

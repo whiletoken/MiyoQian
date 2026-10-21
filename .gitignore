@@ -10,7 +10,16 @@ qrcode.png
 *.log
 data/
 logs/
+
+# 统一缓存与编译打包输出目录
+.cache/
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+
 tests/*
+!tests/conftest.py
 !tests/test_account_storage.py
 !tests/test_exchange_scheduler.py
 !tests/test_cloud_games.py

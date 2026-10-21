@@ -1,7 +1,11 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "myq"
 version = "0.1.0"
-description = "Add your description here"
+description = "简洁的米游社签到与日常助手"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -13,6 +17,20 @@ dependencies = [
     "Pillow>=12.3.0",
 ]
 
+[tool.hatch.build.targets.wheel]
+packages = ["miyouqian"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/miyouqian",
+    "/main.py",
+    "/config.example.yaml",
+    "/README.md",
+    "/pyproject.toml",
+]
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+cache_dir = ".cache/pytest"
+addopts = "--assert=plain"

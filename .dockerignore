@@ -32,6 +32,7 @@ wheels/
 
 # ==================== 测试与代码检查 ====================
 /tests/
+.cache/
 .pytest_cache/
 .coverage
 htmlcov/
