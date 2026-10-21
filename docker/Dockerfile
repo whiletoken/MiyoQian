@@ -1,5 +1,5 @@
 ARG BASE_IMAGE=python:3.11-slim-bookworm
-ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.7.3
+ARG UV_IMAGE=ghcr.nju.edu.cn/astral-sh/uv:0.7.3
 
 # ==================== 构建阶段 ====================
 FROM ${UV_IMAGE} AS uv-bin
@@ -28,12 +28,12 @@ COPY pyproject.toml uv.lock ./
 # 3. 安装依赖至独立虚拟环境 /opt/venv 并清理构建缓存
 RUN set -e; \
     if [ -n "${PYPI_MIRROR}" ] && [ "${PYPI_MIRROR}" != "https://pypi.org" ]; then \
-        PYPI_URL="${PYPI_MIRROR%/}"; \
-        PYPI_URL="${PYPI_URL%/simple}"; \
-        export UV_INDEX_URL="${PYPI_URL}/simple"; \
-        export UV_DEFAULT_INDEX="${PYPI_URL}/simple"; \
-        sed -i "s|https://files.pythonhosted.org|${PYPI_URL}|g" uv.lock; \
-        sed -i "s|https://pypi.org/simple|${PYPI_URL}/simple|g" uv.lock; \
+    PYPI_URL="${PYPI_MIRROR%/}"; \
+    PYPI_URL="${PYPI_URL%/simple}"; \
+    export UV_INDEX_URL="${PYPI_URL}/simple"; \
+    export UV_DEFAULT_INDEX="${PYPI_URL}/simple"; \
+    sed -i "s|https://files.pythonhosted.org|${PYPI_URL}|g" uv.lock; \
+    sed -i "s|https://pypi.org/simple|${PYPI_URL}/simple|g" uv.lock; \
     fi; \
     uv sync --frozen --no-dev --no-install-project; \
     uv cache clean
