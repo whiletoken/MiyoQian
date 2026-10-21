@@ -1,9 +1,7 @@
-# syntax=docker/dockerfile:1
 ARG BASE_IMAGE=python:3.11-slim-bookworm
-ARG UV_IMAGE=astral/uv:0.7.3
+ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.7.3
 
 # ==================== 构建阶段 ====================
-# 使用 Docker Hub 镜像（astral/uv 而非 ghcr.io），方便国内通过镜像加速器稳定拉取
 FROM ${UV_IMAGE} AS uv-bin
 
 FROM ${BASE_IMAGE} AS builder
