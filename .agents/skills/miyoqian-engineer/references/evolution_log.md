@@ -72,3 +72,11 @@
 1. 任务结果持久化解耦：引入 RecordRepository 仓储模式，每次任务执行（定时调度、命令行、手动触发）均生成结构化执行记录并原子写入 records.json。\n2. 结构化执行度量：记录包含每次执行的时间戳、耗时、触发源、全局状态（成功/部分成功/失败/跳过）、分账号与分阶段明细及完整日志。\n3. WebUI 执行记录看板：新增 '记录' Tab 标签页与 /api/records 接口，支持查看历史批次、分账号详情、成功失败明细、查看当次完整日志与一键清空历史。\n4. 控制台状态联动：仪表盘 '最近结果' 优先显示持久化执行记录与摘要，彻底摆脱单靠纯文本日志判断任务状态的不靠谱现状。
 - **门禁校验**: 测试套件 100% 通过，工程规范校验通过。
 ---
+
+### [2026-10-21 14:40:55] PERF: Docker基础镜像改用阿里云源并接入米游社极验test_nine微服务
+- **记录者**: Antigravity Agent
+- **演进类型**: `perf`
+- **核心要点**:
+1. Dockerfile与docker-compose基础镜像全面切换为阿里云ACR镜像(registry.cn-hangzhou.aliyuncs.com/library/python:3.11-slim-bookworm)，并配置Debian阿里云APT加速源; 2. 在docker-compose.yml集成米游社极验验证码识别微服务luguoyixiazi/test_nine; 3. 在miyouqian/core/captcha.py实现TestNineCaptchaSolver策略，兼容标准/扁平JSON响应，不重试防止challenge失效; 4. WebUI和config.example.yaml与README完善对接支持。
+- **门禁校验**: 测试套件 100% 通过，工程规范校验通过。
+---

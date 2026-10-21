@@ -40,6 +40,10 @@ features:
 captcha:
   max_retries: 3
   channels:
+    - provider: test_nine # 米游社极验本地/Docker识别服务 (luguoyixiazi/test_nine)
+      enable: false
+      url: "http://127.0.0.1:9645/pass_uni" # 容器内部网络互通可填写 http://test_nine:9645/pass_uni
+      timeout: 30
     - provider: damagou
       enable: false
       userkey: ""   # 打码狗 userkey

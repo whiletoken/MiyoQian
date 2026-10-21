@@ -137,6 +137,14 @@ class CaptchaRequestsAreNotRetriedTest(unittest.TestCase):
 
         self.assertEqual(0, client.get_json_any_status.call_args.kwargs["retries"])
 
+    def test_test_nine_request_disables_retries(self) -> None:
+        client = Mock()
+        client.get_json.return_value = {"data": {"result": "success", "validate": "v"}}
+
+        self.solve({"provider": "test_nine", "enable": True}, client)
+
+        self.assertEqual(0, client.get_json.call_args.kwargs["retries"])
+
 
 if __name__ == "__main__":
     unittest.main()

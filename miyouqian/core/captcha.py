@@ -11,6 +11,8 @@ from typing import Any, Callable, Mapping
 from .http import ApiClient
 
 DAMAGOU_URL = "http://api.damagou.top/apiv1/jiyanRecognize.html"
+TEST_NINE_DEFAULT_URL = "http://127.0.0.1:9645/pass_uni"
+TEST_NINE_DEFAULT_TIMEOUT = 30
 CUSTOM_DEFAULT_TIMEOUT = 120
 CUSTOM_MAX_ATTEMPTS = 3
 CUSTOM_MAX_WAIT_SECONDS = 60
@@ -20,6 +22,7 @@ CUSTOM_DEFAULT_RETRY_AFTER = 5
 # 原样重发只会被秒拒 (old challenge)，必须交给调用方重新取一个新验证码。
 CUSTOM_RETRY_WITH_DELAY = {42901, 50301, 50302}
 PROVIDER_LABELS = {
+    "test_nine": "极验 Docker (test_nine)",
     "damagou": "打码狗",
     "custom": "自定义接口",
 }
@@ -94,6 +97,42 @@ class DamagouCaptchaSolver(CaptchaSolver):
             return None
 
 
+class TestNineCaptchaSolver(CaptchaSolver):
+    """针对米游社极验验证码的本地/容器化微服务（luguoyixiazi/test_nine）识别策略。"""
+
+    def solve(
+        self,
+        client: ApiClient,
+        gt: str,
+        challenge: str,
+        geetest_success: int | None = None,
+        emit: Callable[[str], None] | None = None,
+    ) -> CaptchaSolution | None:
+        def fail(reason: str) -> None:
+            if emit:
+                emit(f"极验Docker识别失败: {reason}")
+
+        try:
+            url = str(self.channel.get("url") or "").strip() or TEST_NINE_DEFAULT_URL
+            timeout = float(self.channel.get("timeout") or TEST_NINE_DEFAULT_TIMEOUT)
+            params = {"gt": gt, "challenge": challenge}
+            # 极验 challenge 为一次性凭据，不做重试以免加重服务端状态错乱
+            data = client.get_json(
+                url,
+                params=params,
+                timeout=timeout,
+                retries=0,
+            )
+            solution = _parse_test_nine_response(data, challenge)
+            if not solution:
+                fail(_extract_test_nine_error(data))
+                return None
+            return solution
+        except Exception as exc:
+            fail(str(exc))
+            return None
+
+
 class CustomCaptchaSolver(CaptchaSolver):
     """调用遵循《自定义打码接口规范》的服务，规范见 webui/custom-captcha-api.md。"""
 
@@ -124,6 +163,8 @@ class CustomCaptchaSolver(CaptchaSolver):
                 if code == 0:
                     solution = _parse_custom_response(data, challenge)
                     if not solution:
+                        solution = _parse_test_nine_response(data, challenge)
+                    if not solution:
                         fail("接口返回成功但缺少 data.validate")
                     return solution
                 if attempt < CUSTOM_MAX_ATTEMPTS and code in CUSTOM_RETRY_WITH_DELAY:
@@ -142,6 +183,7 @@ class CaptchaSolverFactory:
     """验证码识别器工厂（Factory 模式）。"""
 
     _solvers: dict[str, type[CaptchaSolver]] = {
+        "test_nine": TestNineCaptchaSolver,
         "damagou": DamagouCaptchaSolver,
         "custom": CustomCaptchaSolver,
     }
@@ -237,8 +279,64 @@ def _parse_custom_response(data: Mapping[str, Any], request_challenge: str) -> C
     return CaptchaSolution(validate=validate, challenge=challenge)
 
 
+def _parse_test_nine_response(data: Any, request_challenge: str) -> CaptchaSolution | None:
+    """解析针对米游社极验设计的 test_nine 服务响应。"""
+    if not isinstance(data, dict):
+        return None
+
+    # 结构 1：test_nine 标准格式 {"data": {"result": "success", "validate": "..."}}
+    payload = data.get("data")
+    if isinstance(payload, dict):
+        result = str(payload.get("result") or "").lower()
+        validate = str(payload.get("validate") or "").strip()
+        if validate and (result in ("success", "ok") or not result):
+            challenge = str(payload.get("challenge") or "").strip() or request_challenge
+            return CaptchaSolution(validate=validate, challenge=challenge)
+
+    # 结构 2：扁平格式 {"result": "success", "validate": "..."}
+    result = str(data.get("result") or "").lower()
+    validate = str(data.get("validate") or "").strip()
+    if validate and (result in ("success", "ok") or not result):
+        challenge = str(data.get("challenge") or "").strip() or request_challenge
+        return CaptchaSolution(validate=validate, challenge=challenge)
+
+    # 结构 3：兼容 code: 0 自定义规范格式
+    code = _response_code(data)
+    if code == 0 and isinstance(payload, dict):
+        validate = str(payload.get("validate") or "").strip()
+        if validate:
+            challenge = str(payload.get("challenge") or "").strip() or request_challenge
+            return CaptchaSolution(validate=validate, challenge=challenge)
+
+    return None
+
+
+def _extract_test_nine_error(data: Any) -> str:
+    """提取 test_nine 失败错误原因。"""
+    if not isinstance(data, dict):
+        return "返回格式非有效 JSON"
+    if isinstance(data.get("data"), dict):
+        sub = data["data"]
+        msg = sub.get("msg") or sub.get("message")
+        if msg:
+            return str(msg)
+        result = sub.get("result")
+        if result and str(result).lower() != "success":
+            return f"识别状态: {result}"
+    msg = data.get("msg") or data.get("message") or data.get("detail")
+    if msg:
+        return str(msg)
+    result = data.get("result")
+    if result and str(result).lower() != "success":
+        return f"识别状态: {result}"
+    return "识别未通过或缺少 validate 凭据"
+
+
 def _channel_configured(channel: Mapping[str, Any]) -> bool:
     provider = str(channel.get("provider") or "")
+    if provider == "test_nine":
+        # 默认允许留空使用内置默认地址 http://127.0.0.1:9645/pass_uni
+        return True
     if provider == "damagou":
         return bool(str(channel.get("userkey") or "").strip())
     if provider == "custom":

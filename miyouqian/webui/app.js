@@ -19,6 +19,7 @@ const cloudGameOptions = [
 ];
 
 const captchaChannelOptions = [
+  ["test_nine", "极验识别服务 (Docker / test_nine)"],
   ["damagou", "打码狗(成本≈0.01元/次)"],
   ["custom", "自定义接口"],
 ];
@@ -438,6 +439,17 @@ async function showCustomCaptchaDoc() {
 }
 
 function captchaChannelFields(provider, channel) {
+  if (provider === "test_nine") {
+    return `
+      <div class="push-channel-fields form-grid compact">
+        <label>
+          <span>服务地址 (/pass_uni)</span>
+          <input data-captcha-field="url" type="text" placeholder="http://127.0.0.1:9645/pass_uni (Docker内部填 http://test_nine:9645/pass_uni)" value="${escapeAttr(channel.url || "http://127.0.0.1:9645/pass_uni")}" autocomplete="off" />
+        </label>
+        <input data-captcha-field="timeout" type="hidden" value="${escapeAttr(channel.timeout || 30)}" />
+      </div>
+    `;
+  }
   if (provider === "custom") {
     return `
       <div class="push-channel-fields form-grid compact">
@@ -478,6 +490,14 @@ function captchaChannelHiddenFields(channel) {
 }
 
 function emptyCaptchaChannel(provider) {
+  if (provider === "test_nine") {
+    return {
+      provider,
+      enable: true,
+      url: "http://127.0.0.1:9645/pass_uni",
+      timeout: 30,
+    };
+  }
   if (provider === "custom") {
     return {
       provider,
@@ -522,6 +542,9 @@ function findCaptchaChannel(provider) {
 
 function hasCaptchaChannelConfig(channel) {
   if (!channel) return false;
+  if (channel.provider === "test_nine") {
+    return true;
+  }
   if (channel.provider === "custom") {
     return Boolean(String(channel.url || "").trim());
   }

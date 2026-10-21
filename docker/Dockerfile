@@ -1,10 +1,14 @@
-ARG BASE_IMAGE=python:3.11-slim-bookworm
+ARG BASE_IMAGE=registry.cn-hangzhou.aliyuncs.com/library/python:3.11-slim-bookworm
 ARG UV_IMAGE=ghcr.nju.edu.cn/astral-sh/uv:0.7.3
 
 # ==================== 构建阶段 ====================
 FROM ${UV_IMAGE} AS uv-bin
 
 FROM ${BASE_IMAGE} AS builder
+
+# 替换 Debian 软件源为阿里云镜像，加速系统工具依赖安装
+RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
+    sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list 2>/dev/null || true
 
 # 复制 uv 二进制工具
 COPY --from=uv-bin /uv /usr/local/bin/uv
@@ -46,6 +50,10 @@ WORKDIR /app
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/opt/venv/bin:${PATH}"
+
+# 替换 Debian 软件源为阿里云镜像
+RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
+    sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list 2>/dev/null || true
 
 # 创建低权限系统用户及运行所需的数据/日志目录
 RUN groupadd --system myq \

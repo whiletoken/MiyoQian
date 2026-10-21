@@ -4,6 +4,7 @@ services:
       context: ..
       dockerfile: docker/Dockerfile
       args:
+        BASE_IMAGE: ${BASE_IMAGE:-registry.cn-hangzhou.aliyuncs.com/library/python:3.11-slim-bookworm}
         PYPI_MIRROR: ${PYPI_MIRROR:-https://mirrors.aliyun.com/pypi}
     container_name: miyouqian
     restart: unless-stopped
@@ -11,11 +12,12 @@ services:
     ports:
       - "5890:5890"
     volumes:
-      # 方式 1：Docker 专用状态卷（推荐，包含 config.yaml, account.json, logs 等）
+      # 方式 1：Docker 专用状态卷（推荐，包含 config.yaml, account.json, records.json, logs 等）
       - miyouqian_state:/app/state
       # 方式 2：映射主机上的配置文件与账号文件（需先在主机创建对应文件）
       # - ./config.yaml:/app/state/config.yaml
       # - ./account.json:/app/state/account.json
+      # - ./records.json:/app/state/records.json
       # - ./logs:/app/state/logs
     environment:
       - TZ=Asia/Shanghai
@@ -26,6 +28,25 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+    depends_on:
+      test_nine:
+        condition: service_started
+        required: false
+
+  # 米游社极验验证码本地/容器识别微服务（专为米游社定制：支持九宫格、便笺、点选等题型）
+  # 容器间网络通信地址：http://test_nine:9645/pass_uni
+  # 宿主机直接访问地址：http://127.0.0.1:9645/pass_uni
+  test_nine:
+    image: luguoyixiazi/test_nine:25.11.2
+    container_name: miyouqian-geetest
+    restart: unless-stopped
+    ports:
+      - "9645:9645"
+    environment:
+      - use_pdl=1
+      - use_dfine=1
+      - use_multi=1
+      - LOG_LEVEL=INFO
 
 volumes:
   miyouqian_state:

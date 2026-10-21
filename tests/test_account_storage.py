@@ -21,6 +21,7 @@ from miyouqian.core.captcha import (
     CaptchaSolverFactory,
     CustomCaptchaSolver,
     DamagouCaptchaSolver,
+    TestNineCaptchaSolver,
     solve_bbs_captcha,
     solve_game_captcha,
 )
@@ -205,7 +206,10 @@ class AccountStorageAndMigrationTest(unittest.TestCase):
 
 
 class CaptchaStrategyPatternTest(unittest.TestCase):
-    def test_factory_creates_damagou_and_custom(self):
+    def test_factory_creates_test_nine_damagou_and_custom(self):
+        test_nine_solver = CaptchaSolverFactory.create({"provider": "test_nine"})
+        self.assertIsInstance(test_nine_solver, TestNineCaptchaSolver)
+
         damagou_solver = CaptchaSolverFactory.create({"provider": "damagou"})
         self.assertIsInstance(damagou_solver, DamagouCaptchaSolver)
 
@@ -214,6 +218,35 @@ class CaptchaStrategyPatternTest(unittest.TestCase):
 
         unknown_solver = CaptchaSolverFactory.create({"provider": "unknown"})
         self.assertIsNone(unknown_solver)
+
+    def test_test_nine_solver_success_and_failure(self):
+        client = Mock()
+        solver = TestNineCaptchaSolver({"provider": "test_nine", "url": "http://127.0.0.1:9645/pass_uni"})
+        
+        # 成功用例
+        client.get_json.return_value = {
+            "data": {
+                "result": "success",
+                "validate": "test_validate_123",
+                "challenge": "challenge_abc"
+            }
+        }
+        res = solver.solve(client, "gt_1", "challenge_abc")
+        self.assertIsNotNone(res)
+        self.assertEqual(res.validate, "test_validate_123")
+        self.assertEqual(res.challenge, "challenge_abc")
+
+        # 失败用例
+        client.get_json.return_value = {
+            "data": {
+                "result": "failed",
+                "msg": "识别超时"
+            }
+        }
+        messages = []
+        fail_res = solver.solve(client, "gt_1", "challenge_abc", emit=messages.append)
+        self.assertIsNone(fail_res)
+        self.assertIn("识别超时", messages[0])
 
 
 class TaskTemplateMethodTest(unittest.TestCase):

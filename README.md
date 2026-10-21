@@ -92,7 +92,9 @@
 
 ### 方式一：Docker 容器化部署（强烈推荐）
 
-适用于各类 Linux 服务器、群晖/威联通/极空间 NAS 等环境。镜像采用**多阶段构建**，支持国内源加速并严格控制运行时体积。
+适用于各类 Linux 服务器、群晖/威联通/极空间 NAS 等环境。镜像采用**多阶段构建**，基础镜像全面采用**阿里云镜像源**（`registry.cn-hangzhou.aliyuncs.com`）与 PyPI 阿里云源加速，大幅提升国内构建与拉取成功率。
+
+`docker/docker-compose.yml` 预置集成了专为米游社定制的 **极验识别微服务 (test_nine)**，开箱即用：
 
 #### 1. 获取并启动服务
 
@@ -100,15 +102,18 @@
 git clone https://github.com/whiletoken/MiyoQian.git
 cd MiyoQian/docker
 
-# 构建并后台启动
+# 构建并后台启动全部服务（MiyoQian 主程序 + 极验识别容器）
 docker compose up -d --build
 ```
 
-启动完成后，通过浏览器访问 `http://<宿主机IP>:5890` 即可进入 Web 控制台。
+启动完成后：
+- 浏览器访问 `http://<宿主机IP>:5890` 即可进入 Web 控制台；
+- 极验识别容器（`test_nine`）监听在 `9645` 端口，容器内部网络通信地址为 `http://test_nine:9645/pass_uni`。
 
 > [!NOTE]
 > - 容器内时区已默认配置为 `Asia/Shanghai`；
-> - 默认使用 Docker 独立命名卷 `miyouqian_state` 挂载在 `/app/state`，配置、凭据与任务记录在容器重建后均会自动持久化，不会丢失。
+> - 默认使用 Docker 独立命名卷 `miyouqian_state` 挂载在 `/app/state`，配置、凭据与任务记录在容器重建后均会自动持久化，不会丢失；
+> - 基础镜像默认使用阿里云源 `registry.cn-hangzhou.aliyuncs.com/library/python:3.11-slim-bookworm`，国内拉取迅速。
 
 #### 2. 映射宿主机已有文件（可选）
 
@@ -247,10 +252,11 @@ uv run python main.py show
 
 ## 🔒 验证码对接规范 (Captcha)
 
-米游币任务与部分签到可能遭遇极验 (Geetest) 滑块或文字点选验证。项目默认跳过验证码，如需自动识别，可在 Web 控制台开启：
+米游币任务与部分签到可能遭遇极验 (Geetest) 九宫格、便笺、滑块或文字点选验证。项目默认跳过验证码，如需自动识别，可在 Web 控制台开启：
 
-1. **打码狗 (Damagou)**：填入用户 `userkey` 即可直接使用；
-2. **自定义打码服务**：遵循项目自有的标准接口调用规范。完整请求协议、返回数据信封与状态码定义见 [`miyouqian/webui/custom-captcha-api.md`](miyouqian/webui/custom-captcha-api.md)。
+1. **米游社极验本地/容器服务 (test_nine)**：针对米游社各类题型专门微调的开源识别服务。若使用 `docker-compose.yml` 启动，接口地址直接填写 `http://test_nine:9645/pass_uni`；若在宿主机直接运行填 `http://127.0.0.1:9645/pass_uni` 即可，0 额外调用成本；
+2. **打码狗 (Damagou)**：填入用户 `userkey` 即可直接使用；
+3. **自定义打码服务**：遵循项目自有的标准接口调用规范。完整请求协议、返回数据信封与状态码定义见 [`miyouqian/webui/custom-captcha-api.md`](miyouqian/webui/custom-captcha-api.md)。
 
 > [!NOTE]
 > 项目内建 Challenge 保护机制：非限流排队错误绝不重放同一个 Challenge，规避二次提交被秒拒与重复计费。
