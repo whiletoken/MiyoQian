@@ -4,7 +4,7 @@
   <h1 align="center">
     <img src="./miyouqian/webui/assets/myq_logo.png" width="200" alt="米游签" style="border-radius:10px">
   </h1>
-  <p>一个小而美的带 Web 控制台的米游社签到工具，支持扫码登录、游戏社区签到、云游戏签到、米游币任务、每日自动执行和结果推送。</p>
+  <p>一个小而美的带 Web 控制台的米游社签到工具，支持扫码登录、游戏社区签到、云游戏签到、米游币任务和每日自动执行。</p>
   <p>
     <img alt="Python" src="https://img.shields.io/badge/Python-3.11%2B-3776AB?logo=python&style=flat-square">
     <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-1E9BFA?style=flat-square">
@@ -45,7 +45,6 @@
 - 米游社商品兑换
 - 本地 Web 控制台
 - 每日自动执行
-- 执行结果推送
 - 日志查看
 
 ## 支持的游戏
@@ -189,7 +188,6 @@ shop_exchange:
 2. **时间校准**：定时兑换前会自动校准服务器时间
 3. **精确等待**：兑换前 180 秒进入精确等待模式
 4. **重试机制**：在配置的重试时长内持续尝试兑换
-5. **结果通知**：兑换完成后通过配置的推送渠道通知
 
 ### 注意事项
 
@@ -346,7 +344,7 @@ Settings -> Secrets and variables -> Actions -> New repository secret
 | `MIYOUQIAN_CONFIG` | 复制 `config.yaml` 的完整内容 |
 | `MIYOUQIAN_CREDENTIALS` | 复制 `data/credentials.yaml` 的完整内容 |
 
-粘贴时保留 YAML 原本的换行和缩进。凭证过期、账号变化或推送配置变化后，重新复制最新文件内容覆盖对应 Secret 即可。
+粘贴时保留 YAML 原本的换行和缩进。凭证过期或账号配置变化后，重新复制最新文件内容覆盖对应 Secret 即可。
 
 #### 4. 修改定时执行时间
 
@@ -388,7 +386,7 @@ schedule:
 
 `account` 是可选项，用来只执行某一个账号名；留空则执行 `config.yaml` 中的全部账号。
 
-执行完成后可以在 Actions 日志底部查看任务摘要。如果配置了推送渠道，执行结果也会按 `config.yaml` 中的推送配置发送。
+执行完成后可以在 Actions 日志底部查看任务摘要。
 
 #### 注意事项
 
@@ -478,7 +476,7 @@ http://127.0.0.1:5890
 2. 使用米游社 APP 扫码登录
 3. 选择要执行的游戏社区签到任务
 4. 点击“立即执行”测试一次
-5. 测试正常后再开启每日调度和推送
+5. 测试正常后再开启每日调度
 
 ### 6. 保持程序运行
 
@@ -622,7 +620,6 @@ Web 控制台主要分为几块：
 | 账号 | 添加账号、扫码登录、刷新凭证、删除账号 |
 | 任务配置 | 开关游戏社区签到、云游戏签到和米游币任务 |
 | 每日调度 | 设置每天什么时候自动运行 |
-| 推送通道 | 设置任务完成后的通知方式 |
 | 日志 | 查看本次启动后的运行记录 |
 
 日志区域只显示本次 Web 服务启动后的记录。历史日志会保存在 `logs/miyouqian.log`。
@@ -698,7 +695,7 @@ uv run python main.py show
 默认会生成或使用这些文件：
 
 ```text
-config.yaml              # 账号名称、任务开关、调度、推送等普通配置
+config.yaml              # 账号名称、任务开关、调度等普通配置
 data/credentials.yaml    # 登录凭证
 logs/miyouqian.log       # 历史日志
 qrcode.png               # 命令行扫码登录时生成的二维码图片
@@ -855,7 +852,7 @@ captcha:
 - `url` 按填写的完整地址原样请求，不会自动追加路径。`api_key` 会在配置变更日志中脱敏，请勿提交到公开仓库。
 
 识别、校验或提交失败时，会重新获取验证码并重试，最多执行 `max_retries` 次。
-如果打码狗识别接口返回错误且错误信息包含“余额”，任务会按失败状态通过已配置的推送渠道发送“打码狗余额不足”通知。
+如果打码狗识别接口返回错误且错误信息包含“余额”，任务会按失败状态记录日志。
 
 ### 每日调度
 
@@ -904,209 +901,6 @@ web:
 | `port` | 监听端口，默认 `5890` |
 | `password` | 访问密码，留空首次通过页面设置，也可直接填写明文 |
 
-## 推送设置
-
-推送可以在 Web 控制台中配置。开启后，任务结束时会发送结果通知。
-
-如果只想失败时通知，勾选“仅失败时推送”，或设置：
-
-```yaml
-push:
-  error_only: true
-```
-
-### pushplus
-
-需要填写：
-
-- Token
-- 群组编码，可留空
-
-示例：
-
-```yaml
-push:
-  channels:
-    - provider: pushplus
-      enable: true
-      token: "你的 token"
-      topic: ""
-```
-
-### Server酱³
-
-注意：**Server酱³ 与 Server酱Turbo 是两套用户体系，SendKey 不通用**。本项目接的是 Server酱³（[sc3.ft07.com](https://sc3.ft07.com/)）。
-
-需要填写：
-
-- **SendKey**：在 [SendKey 页面](https://sc3.ft07.com/sendkey) 获取，形如 `sctp1234tXXXXXXXXXXXXXXXX`
-- **UID**：**可以留空**。官方文档写明 uid 就在 SendKey 的 `sctp{uid}t` 前缀里，本项目会自动解析；只有解析不出来时才需要手填
-
-示例：
-
-```yaml
-push:
-  channels:
-    - provider: serverchan
-      enable: true
-      sendkey: "sctp1234tXXXXXXXXXXXXXXXX"
-      uid: ""
-```
-
-推送地址为 `https://<uid>.push.ft07.com/send/<sendkey>.send`，用 `POST` + JSON 提交（`{"title": ..., "desp": ...}`，正文为 markdown，APP 内可渲染）。这样中文和换行都不需要手工 `urlencode`，也不会撞上 URL 长度限制。
-
-如果 HTTP 返回 200 但 `code` 不为 `0`（例如 SendKey 失效），控制台的「推送测试」会直接把这个错误信息显示出来。
-
-### Telegram
-
-需要填写：
-
-- Bot Token
-- Chat ID
-- 自定义 API URL ，可留空
-
-示例：
-
-```yaml
-push:
-  channels:
-    - provider: telegram
-      enable: true
-      token: "bot token"
-      chat_id: "chat id"
-      api_url: ""
-```
-
-### QQ 机器人（QQ 开放平台官方 Bot）
-
-> 这一项和上面的 `provider: qq` 完全无关。`qq` 走的是第三方 OneBot 框架的 HTTP API（需要自己搭 `push_url`），这里走的是 QQ 开放平台官方 OpenAPI，只需要 AppID 和 AppSecret。
-
-需要填写：
-
-- **AppID**：在 [QQ 开放平台](https://bot.q.qq.com/open) 机器人管理端获取
-- **AppSecret**：同上，注意不要泄露，配置文件里请勿提交到公开仓库
-- **私聊 OpenID / 群 OpenID**：可以**手动填写**；也可以点 Web 控制台里的「绑定私聊」/「绑定群聊」按钮自动获取并保存（见下方说明）
-- **消息格式**：纯文本或 Markdown，默认纯文本
-- **接口地址**：可留空，默认 `https://api.bot.qq.com`；使用沙箱环境时填 `https://sandbox.api.sgroup.qq.com`
-
-示例：
-
-```yaml
-push:
-  channels:
-    - provider: qqbot
-      enable: true
-      app_id: "102000000"
-      client_secret: "你的 AppSecret"
-      user_openid: ""        # 手动填写，或用「绑定私聊」按钮自动填入
-      group_openid: ""       # 手动填写，或用「绑定群聊」按钮自动填入
-      message_format: text   # text 或 markdown
-      api_base: ""           # 可留空
-```
-
-#### 自动绑定（可选）
-
-QQ 官方接口发送消息要把 `user_openid` / `group_openid` 填进 URL，这两个 ID 是**每个机器人不同**的，而且开放平台**没有提供查询接口**，只能在机器人收到消息或入群事件时被动拿到。如果你手上已经有这两个 ID，直接填进配置即可；没有的话可以用绑定按钮自动获取：
-
-1. 在「推送通道 - QQ 机器人」里填好 AppID 和 AppSecret，勾选启用
-2. 点「绑定私聊」：页面显示一个 6 位验证码，用 QQ 私聊机器人把这个验证码发出去，程序收到后自动把 `user_openid` 写进配置**并立即保存**
-3. 点「绑定群聊」：把机器人拉进群，或在群里 @机器人 发送页面上的验证码，同样会自动保存 `group_openid`
-
-两种情况都要在 90 秒内完成，超时后重新点一次即可。绑定过程中配置字段会暂时锁定（避免与自动保存冲突），绑定按钮旁边可以随时取消。绑定成功后页面会重新读取配置，显示的就是磁盘上保存的内容。
-
-#### 注意事项
-
-- **主动推送有限制**：QQ 官方对机器人的主动消息（用户没先说话就推送）有额度和频率限制，群聊还要求机器人在群里、并可能需要先申请主动消息权限。如果推送报错，先在 QQ 开放平台确认权限，或用「测试推送」单独排查这一条通道。
-- 私聊和群聊都配置时，两边都会发；只有一边发失败不会影响另一边，但失败原因会写进推送结果和日志。
-- 事件权限要在开放平台申请：私聊需要单聊事件权限，群聊需要群聊事件权限，没开通时绑定时会直接报错提示。
-- `access_token` 有效期 7200 秒，程序会自动缓存和刷新，不需要手动维护。
-
-### 钉钉机器人
-
-需要填写：
-
-- Webhook
-- 加签 Secret，可留空
-
-示例：
-
-```yaml
-push:
-  channels:
-    - provider: dingrobot
-      enable: true
-      webhook: "https://oapi.dingtalk.com/robot/send?access_token=..."
-      secret: "SEC..."
-```
-
-### 飞书机器人
-
-需要填写：
-
-- Webhook
-- 加签 Secret，可留空
-
-示例：
-
-```yaml
-push:
-  channels:
-    - provider: feishubot
-      enable: true
-      webhook: "https://open.feishu.cn/open-apis/bot/v2/hook/..."
-      secret: "SEC..."
-```
-
-### 企业微信机器人
-
-需要填写：
-
-- Webhook
-
-可选开启页面中的「纯文本消息（兼容微信）」，对应 `plain_text: true`。开启后，签到及兑换通知使用普通文本，适用于微信端提示「暂不支持此消息类型」的情况；关闭或不配置时保持原有 Markdown 格式。普通文本最多 2048 个 UTF-8 字节，Markdown 最多 4096 个 UTF-8 字节，超长内容会优先按完整行自动分成多条、依次发送，单行过长时按 UTF-8 字符边界切分，保留完整内容。
-
-同一进程内，同一个机器人的发送间隔至少 3.1 秒，签到、兑换和网页测试共用节流；其他应用共用机器人时仍需注意总频率。发送中途失败会停止后续分条，并在推送结果中注明已成功发送的条数；不会自动重发，以免重复通知。
-
-示例：
-
-```yaml
-push:
-  channels:
-    - provider: wecombot
-      enable: true
-      webhook: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..."
-      plain_text: false  # 默认 Markdown；改为 true 使用普通文本
-```
-
-### 邮箱
-
-需要填写：
-
-- SMTP 服务器
-- SMTP 端口
-- 邮箱账号
-- 邮箱授权码
-- 发件人
-- 收件人
-
-示例：
-
-```yaml
-push:
-  channels:
-    - provider: email
-      enable: true
-      smtp_host: "smtp.example.com"
-      smtp_port: 465
-      smtp_user: "name@example.com"
-      smtp_password: "邮箱授权码"
-      mail_from: "name@example.com"
-      mail_to: "target@example.com"
-      smtp_ssl: true
-```
-
-多个收件人通常可以用英文逗号分隔。
-
 ## 推荐使用流程
 
 第一次使用建议这样做：
@@ -1120,8 +914,7 @@ push:
 7. 点击“立即执行”
 8. 确认日志正常
 9. 开启每日调度
-10. 按需开启推送
-11. 最后再考虑开启米游币任务
+10. 最后再考虑开启米游币任务
 
 ## FAQ
 
@@ -1186,7 +979,6 @@ uv run python main.py serve --port 5891
 | --- | --- | --- |
 | [ ] | 补充更多游戏渠道签到 | -- |
 | [x] | 新增米游社其他功能，例如米游币兑换功能 | 2025-01 |
-| [ ] | 补充更多推送渠道（已新增 QQ 开放平台官方机器人渠道） | -- |
 | [ ] | 优化签到流程，降低风控风险 | -- |
 | [ ] | 增加配置导入、导出功能 | -- |
 | [ ] | 完善产品文档 | -- |

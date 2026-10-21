@@ -122,7 +122,6 @@ jobs:
               "社区任务结束",
               "今日任务已完成",
               "失败",
-              "推送结果",
               "签到任务执行完成",
           )
           lines = log_file.read_text(encoding="utf-8", errors="replace").splitlines()

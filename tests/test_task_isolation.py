@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 
 from miyouqian import constants as c
 from miyouqian.core.http import ApiError
-from miyouqian.service import notifier, runner
+from miyouqian.service import runner
 from miyouqian.tasks.bbs import BbsTasks
 from miyouqian.tasks.games import GameCheckin
 
@@ -66,13 +66,6 @@ class GameCheckinIsolationTest(unittest.TestCase):
         self.assertIn("游戏社区签到汇总：成功 1，失败 1，跳过 0", lines)
         failed = next(line for line in lines if line.startswith("游戏社区失败项："))
         self.assertIn(f"{c.GAMES['genshin']['name']} 请求异常", failed)
-
-    def test_summary_reports_the_failure_so_the_push_is_not_a_success(self) -> None:
-        lines = self.run_checkin(["genshin"], roles=[[game_role("1", "甲")]], info=[ApiError(TIMEOUT)])
-
-        self.assertFalse(notifier.is_task_success(lines))
-        game = notifier.build_structured_summary(lines, False)["sections"][0]["game"]
-        self.assertEqual("失败 1", game["label"])
 
 
 class FakeBbsClient:
@@ -163,14 +156,12 @@ class BbsTasksIsolationTest(unittest.TestCase):
         lines, _ = self.run_bbs(**{c.BBS_POST_LIST_URL: ApiError(TIMEOUT)})
 
         self.assertIn("获取帖子列表失败，无法执行看帖/点赞/分享", lines)
-        self.assertFalse(notifier.is_task_success(lines))
         self.assertTrue(any(line.startswith("米游币任务汇总：") for line in lines))
 
     def test_state_timeout_is_reported_as_the_existing_state_failure(self) -> None:
         lines, _ = self.run_bbs(**{c.BBS_TASKS_URL: ApiError(TIMEOUT)})
 
         self.assertIn("任务状态获取失败，请检查 cookie/stoken", lines)
-        self.assertFalse(notifier.is_task_success(lines))
 
     def test_final_progress_timeout_keeps_the_summary(self) -> None:
         lines, _ = self.run_bbs(**{c.BBS_TASKS_URL: [bbs_state(), ApiError(TIMEOUT)]})
@@ -217,7 +208,6 @@ class RunTasksIsolationTest(unittest.TestCase):
 
         self.assertEqual(2, sum(line.startswith("游戏社区失败项：游戏社区签到执行异常") for line in output))
         self.assertTrue(any("米游币任务汇总" in line for line in output))
-        self.assertFalse(notifier.is_task_success(output))
 
     def test_streaming_mode_records_the_failure_with_its_component(self) -> None:
         streamed: list[tuple[str, str]] = []

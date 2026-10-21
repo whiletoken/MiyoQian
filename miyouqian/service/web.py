@@ -23,8 +23,6 @@ import qrcode
 from ..auth.login import AigisRequired, CaptchaLogin, QRLogin, _QrRefreshed
 from ..core import cookies
 from ..core.config import (
-    PUSH_CHANNEL_DEFAULTS,
-    PUSH_CHANNEL_FIELDS,
     bind_shop_plan_accounts,
     find_account_index_by_stuid,
     load_config,
@@ -35,18 +33,12 @@ from ..core.config import (
 )
 from ..core.http import ApiClient
 from ..core.logs import append_log, configure_logger, format_line, print_startup_banner
-from ..core.qq_bot import bind_openid as bind_qq_openid
-from ..core.qq_bot import generate_verify_code
 from ..tasks.shop_exchange import ShopExchange
 from .exchange_scheduler import ExchangeScheduler
-from .notifier import send_push, send_task_push, send_exchange_push, push_channels
 from .runner import run_tasks
 from .scheduler import DailyScheduler
 
 WEB_ROOT = pathlib.Path(__file__).resolve().parents[1] / "webui"
-
-# QQ 官方机器人绑定 OpenID 的等待时间，和页面提示保持一致
-QQ_BIND_TIMEOUT = 90
 
 # ---------------------------------------------------------------------------
 # 密码认证工具
@@ -87,8 +79,6 @@ class WebApp:
         self._qr_refresh = threading.Event()
         self._login_cancel = threading.Event()
         self._login_generation = 0
-        self.qq_bind_state: dict[str, Any] = {"running": False, "status": "idle"}
-        self._qq_bind_cancel = threading.Event()
         self.scheduler = DailyScheduler(self.config, self.run_all, lambda message: self.log(message, "scheduler"))
         self.exchange_scheduler = ExchangeScheduler(
             self.config,
@@ -178,36 +168,14 @@ class WebApp:
     def run_all(self) -> list[str]:
         with self.lock:
             config = self.config
-        try:
-            self.log("任务编排开始", "task")
-            lines = run_tasks(
-                config,
-                str(self.config_path),
-                emit_component=lambda message, component: self.log(message, component),
-            )
-        except Exception as exc:
-            push_result = send_push(config, "米游签任务失败", str(exc), success=False)
-            if push_result:
-                self.log(push_result, "push")
-            raise
-        self.log("任务编排完成，准备发送推送", "task")
-        push_result = send_task_push(config, lines)
-        if push_result:
-            self.log(push_result, "push")
+        self.log("任务编排开始", "task")
+        lines = run_tasks(
+            config,
+            str(self.config_path),
+            emit_component=lambda message, component: self.log(message, component),
+        )
+        self.log("任务编排完成", "task")
         return []
-
-    def test_push_channels(self) -> str:
-        with self.lock:
-            config = copy.deepcopy(self.config)
-        channels = push_channels(config.get("push") or {})
-        if not channels:
-            raise ValueError("请先启用至少一个推送通道")
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        message = f"这是一条推送测试消息\n发送时间: {now}\n如收到消息，说明该通道可用"
-        result = send_push(config, "米游签推送测试", message, success=False)
-        if result:
-            self.log(result, "push")
-        return result or "推送测试已完成"
 
     def status(self) -> dict[str, Any]:
         with self.lock:
@@ -233,7 +201,6 @@ class WebApp:
         validate_unique_account_uids(payload)
         with self.lock:
             old_config = copy.deepcopy(self.config)
-            preserve_push_channel_secrets(old_config, payload)
             normalize_config(payload)
             bind_shop_plan_accounts(payload)
             changes = diff_config(old_config, payload)
@@ -243,9 +210,6 @@ class WebApp:
             configure_logger(self.log_file)
             self.scheduler.reload(self.config)
             self.exchange_scheduler.reload(self.config)
-            # AppID/AppSecret 可能刚被改过，正在跑的绑定用的还是旧凭证，结果不可信
-            if self.qq_bind_state.get("running"):
-                self._qq_bind_cancel.set()
         visible_changes = [change for change in changes if should_log_config_change(*change)]
         if visible_changes:
             self.log(f"配置已保存，共 {len(visible_changes)} 项变更", "config")
@@ -387,8 +351,6 @@ class WebApp:
                     plans[plan_index]["last_attempt_key"] = f"manual:{datetime.now().isoformat(timespec='seconds')}"
                     save_config(self.config_path, self.config)
                     self.exchange_scheduler.reload(self.config)
-            if shop_config.get("push", False):
-                self._send_exchange_push(goods_name, {"ok": False, "message": summary}, plan)
             raise
         finally:
             self.exchange_scheduler.clear_progress(plan_index)
@@ -404,10 +366,6 @@ class WebApp:
                 save_config(self.config_path, self.config)
                 self.exchange_scheduler.reload(self.config)
         self.log(f"手动商品兑换计划完成 {plan_index + 1}: {goods_name}，{summary}", "exchange")
-
-        # 发送兑换结果推送
-        if shop_config.get("push", False):
-            self._send_exchange_push(goods_name, result, plan)
 
         return result
 
@@ -440,8 +398,6 @@ class WebApp:
                     plans[plan_index]["last_run"] = datetime.now().isoformat(timespec="seconds")
                     save_config(self.config_path, self.config)
             self.exchange_scheduler.reload(self.config) # 移出锁外,防止嵌套等待
-            if shop_config.get("push", False):
-                self._send_exchange_push(goods_name, {"ok": False, "message": summary, "attempt": 0}, plan)
             raise
         summary = f"{result.get('message', '未知结果')}({result.get('retcode')})，请求 {result.get('attempt', 1)} 次"
         with self.lock:
@@ -454,37 +410,6 @@ class WebApp:
                 save_config(self.config_path, self.config)
         self.exchange_scheduler.reload(self.config) #同上
         self.log(f"商品兑换计划完成: {goods_name}，{summary}", "exchange")
-
-        # 发送兑换结果推送
-        if shop_config.get("push", False):
-            self._send_exchange_push(goods_name, result, plan)
-
-    def _send_exchange_push(self, goods_name: str, result: dict[str, Any], plan: dict[str, Any]) -> None:
-        """发送商品兑换结果推送"""
-        with self.lock:
-            config = self.config
-        try:
-            is_success = result.get("ok", False)
-
-            # 构建推送标题
-            if is_success:
-                title = "🎉 商品兑换成功"
-            else:
-                title = "❌ 商品兑换失败"
-
-            # 获取计划所属账号信息，添加到 plan 中
-            plan_with_account = dict(plan)
-            try:
-                account = self._account_by_index(self._plan_account_index(plan))
-                plan_with_account["account"] = display_account_name(account)
-            except Exception:
-                plan_with_account["account"] = "未知账号"
-
-            push_result = send_exchange_push(config, title, goods_name, result, plan_with_account, success=is_success)
-            if push_result:
-                self.log(f"商品兑换推送已发送: {push_result}", "exchange")
-        except Exception as exc:
-            self.log(f"商品兑换推送发送失败: {exc}", "exchange")
 
     def _plan_account_index(self, plan: dict[str, Any]) -> int:
         """兑换计划所属账号在当前列表里的下标：优先按 stuid 找，避免账号列表变动后指向别的账号。"""
@@ -773,120 +698,6 @@ class WebApp:
         self._login_cancel.set()
         self.log("登录流程已取消", "auth")
 
-    # ------------------------------------------------------------------
-    # QQ 官方机器人 OpenID 绑定
-    #
-    # QQ 开放平台不提供查询 user_openid / group_openid 的接口，只能在机器人收到
-    # 消息或入群事件时被动获取，所以这里起一个线程连网关等用户发验证码。
-    # ------------------------------------------------------------------
-    def start_qq_bind(self, payload: dict[str, Any]) -> None:
-        target = str(payload.get("target") or "user").strip().lower()
-        if target not in ("user", "group"):
-            raise ValueError("绑定目标只能是 user 或 group")
-        app_id = str(payload.get("app_id") or "").strip()
-        client_secret = str(payload.get("client_secret") or "").strip()
-        api_base = str(payload.get("api_base") or "").strip()
-        if not app_id:
-            raise ValueError("请先填写 AppID")
-        if not client_secret:
-            raise ValueError("请先填写 AppSecret")
-
-        with self.lock:
-            if self.qq_bind_state.get("running"):
-                raise RuntimeError("已有 QQ 绑定正在进行，请等待或取消")
-            self._qq_bind_cancel.clear()
-            # 验证码在这里生成并立刻返回给页面，用户看到后才有东西可发
-            self.qq_bind_state = {
-                "running": True,
-                "status": "starting",
-                "target": target,
-                "message": "正在连接 QQ 网关",
-                "verify_code": generate_verify_code(),
-                "openid": "",
-            }
-            verify_code = str(self.qq_bind_state["verify_code"])
-        thread = threading.Thread(
-            target=self._qq_bind_worker,
-            args=(target, app_id, client_secret, api_base, verify_code),
-            name="miyouqian-web-qq-bind",
-            daemon=True,
-        )
-        thread.start()
-        self.log(f"开始绑定 QQ {'群聊' if target == 'group' else '私聊'} OpenID", "push")
-
-    def _qq_bind_worker(
-        self,
-        target: str,
-        app_id: str,
-        client_secret: str,
-        api_base: str,
-        verify_code: str,
-    ) -> None:
-        def on_event(message: str) -> None:
-            with self.lock:
-                self.qq_bind_state.update({"message": message})
-
-        try:
-            openid = bind_qq_openid(
-                app_id=app_id,
-                client_secret=client_secret,
-                verify_code=verify_code,
-                target=target,
-                api_base=api_base,
-                timeout=QQ_BIND_TIMEOUT,
-                on_event=on_event,
-                cancel=self._qq_bind_cancel.is_set,
-            )
-            field = "group_openid" if target == "group" else "user_openid"
-            # 绑定过程中配置可能已经被改过（改 AppID/AppSecret 会让结果作废），此时不再落盘
-            if self._qq_bind_cancel.is_set():
-                raise RuntimeError("绑定已取消")
-            # 把绑定到的 OpenID 写回配置，省得用户再从日志里手抄一遍
-            with self.lock:
-                channel = ensure_push_channel(self.config, "qqbot")
-                channel[field] = openid
-                channel["app_id"] = app_id
-                channel["client_secret"] = client_secret
-                if api_base:
-                    channel["api_base"] = api_base
-                normalize_config(self.config)
-                save_config(self.config_path, self.config)
-                self.qq_bind_state = {
-                    "running": False,
-                    "status": "success",
-                    "target": target,
-                    "message": "绑定成功，已保存到配置",
-                    "verify_code": verify_code,
-                    "openid": openid,
-                    "field": field,
-                }
-        except Exception as exc:
-            with self.lock:
-                self.qq_bind_state = {
-                    "running": False,
-                    "status": "error",
-                    "target": target,
-                    "message": str(exc),
-                    "verify_code": verify_code,
-                    "openid": "",
-                }
-            self.log(f"绑定 QQ OpenID 失败: {exc}", "push")
-            return
-        self.log(f"绑定 QQ OpenID 成功: {openid}", "push")
-
-    def qq_bind_status(self) -> dict[str, Any]:
-        with self.lock:
-            return dict(self.qq_bind_state)
-
-    def cancel_qq_bind(self) -> None:
-        with self.lock:
-            if not self.qq_bind_state.get("running"):
-                raise RuntimeError("当前没有进行中的 QQ 绑定")
-            # 只置取消标志，最终状态交给 worker 收尾，避免两边同时改状态互相覆盖
-            self.qq_bind_state["message"] = "正在取消绑定"
-        self._qq_bind_cancel.set()
-        self.log("已请求取消 QQ OpenID 绑定", "push")
-
 
 def make_qr_data_uri(text: str) -> str:
     image = qrcode.make(text)
@@ -916,44 +727,6 @@ def find_duplicate_uid(accounts: list[dict[str, Any]], uid: str, exclude_index: 
         if str(account.get("stuid") or "").strip() == uid:
             return index
     return None
-
-
-def ensure_push_channel(config: dict[str, Any], provider: str) -> dict[str, Any]:
-    """取出推送通道，不存在就按默认字段建一个并写回配置。"""
-    push = config.setdefault("push", {})
-    channels = push.setdefault("channels", [])
-    for channel in channels:
-        if isinstance(channel, dict) and str(channel.get("provider") or "") == provider:
-            return channel
-    fields = PUSH_CHANNEL_FIELDS.get(provider, ())
-    channel: dict[str, Any] = {"provider": provider, "enable": True}
-    for field in fields:
-        channel[field] = PUSH_CHANNEL_DEFAULTS.get(provider, {}).get(field, "")
-    channels.append(channel)
-    return channel
-
-
-def preserve_push_channel_secrets(old_config: dict[str, Any], new_config: dict[str, Any]) -> None:
-    old_channels = {
-        str(channel.get("provider") or ""): channel
-        for channel in old_config.get("push", {}).get("channels", [])
-        if isinstance(channel, dict)
-    }
-    new_push = new_config.setdefault("push", {})
-    new_channels = new_push.setdefault("channels", [])
-    if not isinstance(new_channels, list):
-        new_push["channels"] = []
-        return
-    for channel in new_channels:
-        if not isinstance(channel, dict):
-            continue
-        provider = str(channel.get("provider") or "")
-        old_channel = old_channels.get(provider)
-        if not old_channel:
-            continue
-        for key, value in old_channel.items():
-            if key not in channel or channel.get(key) in (None, ""):
-                channel[key] = value
 
 
 def diff_config(old: Any, new: Any, path: str = "") -> list[tuple[str, Any, Any]]:
@@ -1043,8 +816,6 @@ def should_log_config_change(path: str, old_value: Any, new_value: Any) -> bool:
         return False
     if old_value is None and new_value in ("", [], {}, None):
         return False
-    if old_value is None and path.startswith("push.channels[") and path.rsplit(".", 1)[-1] in {"smtp_port", "smtp_ssl"}:
-        return False
     return True
 
 
@@ -1126,9 +897,6 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/shop/device-fp":
                 self.send_json(self.app.ensure_shop_device_fp())
                 return
-            if path == "/api/qqbot/bind/status":
-                self.send_json(self.app.qq_bind_status())
-                return
             self.serve_static(path)
         except Exception as exc:
             self.send_error_json(str(exc), HTTPStatus.INTERNAL_SERVER_ERROR)
@@ -1150,18 +918,6 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if path == "/api/config":
                 self.app.set_config(payload)
-                self.send_json({"ok": True})
-                return
-            if path == "/api/push/test":
-                result = self.app.test_push_channels()
-                self.send_json({"ok": True, "result": result})
-                return
-            if path == "/api/qqbot/bind":
-                self.app.start_qq_bind(payload)
-                self.send_json({"ok": True, **self.app.qq_bind_status()})
-                return
-            if path == "/api/qqbot/bind/cancel":
-                self.app.cancel_qq_bind()
                 self.send_json({"ok": True})
                 return
             if path == "/api/run":
@@ -1229,11 +985,6 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(plan, dict):
                     raise ValueError("兑换计划必须是 JSON 对象")
                 result = self.app.shop_exchange_once(plan)
-                # 处理直接传递plan的情况，也需要推送支持
-                shop_config = self.app.config.get("shop_exchange", {})
-                if shop_config.get("push", False):
-                    goods_name = plan.get("goods_name") or plan.get("goods_id") or "未知商品"
-                    self.app._send_exchange_push(goods_name, result, plan)
                 self.send_json({"ok": True, "result": result})
                 return
             self.send_error_json("接口不存在", HTTPStatus.NOT_FOUND)
