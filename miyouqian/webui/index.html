@@ -76,6 +76,14 @@
           </button>
           <button
             class="ghost"
+            data-view="records"
+            type="button"
+            title="任务执行记录"
+          >
+            记录
+          </button>
+          <button
+            class="ghost"
             data-view="shop"
             type="button"
             title="店铺商品兑换"
@@ -91,6 +99,16 @@
           <button class="primary" id="runBtn" type="button" title="立即执行">
             <svg><use href="#i-play"></use></svg>
             <span>立即执行</span>
+          </button>
+        </div>
+        <div class="actions is-hidden" data-view-actions="records">
+          <button class="ghost" id="recordsRefreshBtn" type="button" title="刷新记录">
+            <svg><use href="#i-refresh"></use></svg>
+            <span>刷新</span>
+          </button>
+          <button class="ghost" id="recordsClearBtn" type="button" title="清空历史记录">
+            <svg><use href="#i-trash"></use></svg>
+            <span>清空</span>
           </button>
         </div>
       </header>
@@ -268,6 +286,35 @@
               <pre id="logs" class="logs"></pre>
             </article>
           </aside>
+        </section>
+      </section>
+
+      <section class="view-panel is-hidden" data-view-panel="records">
+        <section class="status-grid records-status" aria-label="任务执行记录概览">
+          <div class="metric">
+            <span>记录总数</span>
+            <strong id="recordsTotalMetric">0</strong>
+          </div>
+          <div class="metric">
+            <span>最近状态</span>
+            <strong id="recordsLatestStatusMetric">-</strong>
+          </div>
+          <div class="metric">
+            <span>最近时间</span>
+            <strong id="recordsLatestTimeMetric">-</strong>
+          </div>
+          <div class="metric">
+            <span>执行成功率</span>
+            <strong id="recordsSuccessRateMetric">-</strong>
+          </div>
+        </section>
+
+        <section class="records-layout">
+          <div id="recordsEmpty" class="panel empty-state is-hidden">
+            <p>暂无任务执行记录</p>
+            <span>当定时调度触发、命令行执行或手动点击“立即执行”后，每次的详细执行结果与状态将自动持久化保存在此处。</span>
+          </div>
+          <div id="recordsList" class="records-list"></div>
         </section>
       </section>
 

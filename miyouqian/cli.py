@@ -127,6 +127,7 @@ def command_run(
         games_only,
         bbs_only,
         only_games,
+        trigger="cli",
         emit_component=lambda message, component: append_log(
             log_file,
             format_line(message, component),

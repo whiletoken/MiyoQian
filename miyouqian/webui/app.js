@@ -1920,7 +1920,15 @@ async function refreshStatus() {
   $("nextRun").textContent = scheduler.jitter_waiting
     ? `预计 ${formatTime(scheduler.jitter_until || scheduler.next_run)}`
     : formatTime(scheduler.next_run);
-  $("lastResult").textContent = latestResultText(scheduler, login, logs);
+  const latestRec = status.latest_record;
+  if (latestRec) {
+    const statusLabel = latestRec.status === "success"
+      ? "全部成功"
+      : (latestRec.status === "partial" ? "部分成功" : (latestRec.status === "failed" ? "执行失败" : "已跳过"));
+    $("lastResult").textContent = `${statusLabel} (${formatTime(latestRec.timestamp).slice(5)})`;
+  } else {
+    $("lastResult").textContent = latestResultText(scheduler, login, logs);
+  }
 
   const runningPlans = new Set(exchangeScheduler.running_plans || []);
   const runningCount = exchangeScheduler.running_count ?? runningPlans.size;
@@ -2736,6 +2744,177 @@ function escapeAttr(value) {
   return escapeHtml(value);
 }
 
+// ---------------------------------------------------------------------------
+// 任务执行记录管理
+// ---------------------------------------------------------------------------
+let taskRecords = [];
+
+async function loadRecords() {
+  try {
+    const data = await api("/api/records?limit=50");
+    taskRecords = data.records || [];
+    renderRecords(taskRecords);
+  } catch (error) {
+    showToast(`加载记录失败: ${error.message}`);
+  }
+}
+
+async function clearRecords() {
+  if (!confirm("确定要清空全部任务执行记录吗？此操作不可撤销。")) {
+    return;
+  }
+  try {
+    await api("/api/records/clear", { method: "POST" });
+    showToast("执行记录已清空");
+    await loadRecords();
+  } catch (error) {
+    showToast(`清空记录失败: ${error.message}`);
+  }
+}
+
+function getRecordStatusBadge(status) {
+  switch (status) {
+    case "success":
+      return '<span class="record-badge success">全部成功</span>';
+    case "partial":
+      return '<span class="record-badge partial">部分成功</span>';
+    case "failed":
+      return '<span class="record-badge failed">执行失败</span>';
+    case "skipped":
+      return '<span class="record-badge skipped">已跳过</span>';
+    default:
+      return `<span class="record-badge">${escapeHtml(status || "未知")}</span>`;
+  }
+}
+
+function getTriggerBadge(trigger) {
+  switch (trigger) {
+    case "scheduled":
+      return '<span class="record-badge trigger">定时调度</span>';
+    case "cli":
+      return '<span class="record-badge trigger">命令行</span>';
+    case "manual":
+      return '<span class="record-badge trigger">手动触发</span>';
+    default:
+      return `<span class="record-badge trigger">${escapeHtml(trigger || "触发")}</span>`;
+  }
+}
+
+function renderRecords(records) {
+  const container = $("recordsList");
+  const emptyBox = $("recordsEmpty");
+  if (!container) return;
+
+  const total = records.length;
+  $("recordsTotalMetric").textContent = String(total);
+  if (total > 0) {
+    const latest = records[0];
+    $("recordsLatestStatusMetric").innerHTML = getRecordStatusBadge(latest.status);
+    $("recordsLatestTimeMetric").textContent = formatTime(latest.timestamp).slice(5);
+    const succCount = records.filter((r) => r.status === "success").length;
+    const rate = Math.round((succCount / total) * 100);
+    $("recordsSuccessRateMetric").textContent = `${rate}%`;
+  } else {
+    $("recordsLatestStatusMetric").textContent = "-";
+    $("recordsLatestTimeMetric").textContent = "-";
+    $("recordsSuccessRateMetric").textContent = "-";
+  }
+
+  if (total === 0) {
+    container.innerHTML = "";
+    emptyBox?.classList.remove("is-hidden");
+    return;
+  }
+  emptyBox?.classList.add("is-hidden");
+
+  container.innerHTML = records
+    .map((record, index) => {
+      const accounts = record.accounts || [];
+      const messages = record.messages || [];
+
+      const accountsHtml = accounts
+        .map((acc) => {
+          const stagesHtml = (acc.stages || [])
+            .map((st) => {
+              const succItems = (st.success_items || [])
+                .map((item) => `<span class="record-item-pill ok">${escapeHtml(item)}</span>`)
+                .join("");
+              const failItems = (st.failed_items || [])
+                .map((item) => `<span class="record-item-pill err">${escapeHtml(item)}</span>`)
+                .join("");
+              const skipItems = (st.skipped_items || [])
+                .map((item) => `<span class="record-item-pill skip">${escapeHtml(item)}</span>`)
+                .join("");
+              return `
+                <div class="record-stage-row">
+                  <div class="record-stage-name">
+                    <span>${escapeHtml(st.stage)}</span>
+                    ${getRecordStatusBadge(st.status)}
+                  </div>
+                  ${
+                    succItems || failItems || skipItems
+                      ? `
+                    <div class="record-items-group">
+                      ${succItems}
+                      ${failItems}
+                      ${skipItems}
+                    </div>
+                  `
+                      : ""
+                  }
+                </div>
+              `;
+            })
+            .join("");
+
+          return `
+            <div class="record-account-card">
+              <div class="record-account-header">
+                <span class="record-account-title">${escapeHtml(acc.name)} ${acc.stuid ? `<small>(${escapeHtml(acc.stuid)})</small>` : ""}</span>
+                ${getRecordStatusBadge(acc.status)}
+              </div>
+              <div class="record-stage-list">
+                ${stagesHtml || '<span class="record-duration">暂无阶段详情</span>'}
+              </div>
+            </div>
+          `;
+        })
+        .join("");
+
+      const logsHtml =
+        messages.length > 0
+          ? `
+        <div>
+          <button class="record-logs-toggle" type="button" onclick="this.nextElementSibling.classList.toggle('is-hidden')">查看完整执行日志 (${messages.length} 行)</button>
+          <pre class="record-logs-pre is-hidden">${escapeHtml(messages.join("\n"))}</pre>
+        </div>
+      `
+          : "";
+
+      return `
+        <article class="record-card ${index === 0 ? "is-open" : ""}" data-record-id="${escapeHtml(record.id)}">
+          <div class="record-head" onclick="this.parentElement.classList.toggle('is-open')">
+            <div class="record-meta">
+              ${getRecordStatusBadge(record.status)}
+              ${getTriggerBadge(record.trigger)}
+              <span class="record-time">${escapeHtml(record.timestamp || "-")}</span>
+              <span class="record-duration">耗时 ${escapeHtml(record.duration_seconds || 0)}s</span>
+            </div>
+            <div class="record-summary-line">
+              <span>${escapeHtml(record.summary_text || "")}</span>
+              <span class="record-arrow">▼</span>
+            </div>
+          </div>
+          <div class="record-body">
+            ${accountsHtml || `<p class="record-duration">${escapeHtml(record.summary_text || "无账号详情")}</p>`}
+            ${logsHtml}
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
 function switchView(view) {
   activeView = view || "dashboard";
   document.querySelectorAll("[data-view]").forEach((button) => {
@@ -2752,6 +2931,8 @@ function switchView(view) {
   });
   if (activeView === "shop" && !shopGoods.length) {
     loadShopGoods().catch((error) => showToast(error.message));
+  } else if (activeView === "records") {
+    loadRecords().catch((error) => showToast(error.message));
   }
 }
 function initSelectArrows() {
@@ -2871,6 +3052,12 @@ function bindEvents() {
   document.querySelectorAll("[data-view]").forEach((button) => {
     button.addEventListener("click", () => switchView(button.dataset.view));
   });
+  $("recordsRefreshBtn")?.addEventListener("click", () =>
+    loadRecords().then(() => showToast("记录已刷新")).catch((error) => showToast(error.message)),
+  );
+  $("recordsClearBtn")?.addEventListener("click", () =>
+    clearRecords().catch((error) => showToast(error.message)),
+  );
   $("shopRefreshBtn")?.addEventListener("click", () =>
     loadShopGoods().catch((error) => showToast(error.message)),
   );

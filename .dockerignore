@@ -51,6 +51,7 @@ Thumbs.db
 # ==================== 本地运行数据与凭证（通过 Docker 卷隔离） ====================
 config.yaml
 account.json
+records.json
 *.yaml.bak
 /data/
 /logs/

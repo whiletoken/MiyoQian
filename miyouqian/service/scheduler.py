@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import inspect
 import random
 import threading
 import traceback
@@ -56,12 +57,16 @@ class DailyScheduler:
                 self._log_next_run_on_recompute = new_signature[1] != old_signature[1]
         self._wake.set()
 
-    def run_now(self) -> bool:
+    def run_now(self, trigger: str = "manual") -> bool:
         with self._lock:
             if self._running:
                 return False
             self._running = True
-        threading.Thread(target=self._run_once, name="miyouqian-manual-run", daemon=True).start()
+        threading.Thread(
+            target=lambda: self._run_once(trigger=trigger),
+            name="miyouqian-manual-run",
+            daemon=True,
+        ).start()
         return True
 
     def status(self) -> dict[str, Any]:
@@ -116,7 +121,7 @@ class DailyScheduler:
                             self._next_run = self._compute_next_base_run(schedule, tomorrow=True, log_change=False)
                             continue
                         self._running = True
-                    self._run_once()
+                    self._run_once(trigger="scheduled")
                     with self._lock:
                         self._next_run = self._compute_next_base_run(self._schedule_config(), tomorrow=True, log_change=False)
             except Exception as exc:
@@ -127,10 +132,12 @@ class DailyScheduler:
                 if self._stop.wait(timeout=10):
                     break
 
-    def _run_once(self) -> None:
+    def _run_once(self, trigger: str = "scheduled") -> None:
         self.log("开始执行签到任务")
         try:
-            for line in self.run_fn():
+            sig = inspect.signature(self.run_fn)
+            lines = self.run_fn(trigger=trigger) if "trigger" in sig.parameters else self.run_fn()
+            for line in lines:
                 self.log(line)
             with self._lock:
                 self._last_run = datetime.now()

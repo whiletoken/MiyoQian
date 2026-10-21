@@ -1695,3 +1695,230 @@ textarea:focus {
   margin-top: 12px;
   min-height: 20px;
 }
+
+/* ==================== 任务执行记录面板样式 ==================== */
+.records-layout {
+  display: grid;
+  gap: 14px;
+}
+
+.records-list {
+  display: grid;
+  gap: 12px;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--muted);
+}
+
+.empty-state p {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--text);
+}
+
+.record-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  overflow: hidden;
+  transition: border-color 0.15s ease;
+}
+
+.record-card:hover {
+  border-color: var(--primary);
+}
+
+.record-head {
+  padding: 14px 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  background: var(--panel);
+  user-select: none;
+}
+
+.record-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.record-time {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.record-duration {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.record-summary-line {
+  color: var(--muted);
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.record-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.record-badge.success {
+  color: #059669;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+}
+
+.record-badge.partial {
+  color: #d97706;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+}
+
+.record-badge.failed {
+  color: #dc2626;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+}
+
+.record-badge.skipped {
+  color: #6b7280;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+}
+
+.record-badge.trigger {
+  color: #2563eb;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+}
+
+.record-arrow {
+  color: var(--muted);
+  font-size: 12px;
+  transition: transform 0.2s ease;
+}
+
+.record-card.is-open .record-arrow {
+  transform: rotate(180deg);
+}
+
+.record-body {
+  display: none;
+  border-top: 1px solid var(--line);
+  padding: 14px 16px;
+  background: rgba(0, 0, 0, 0.015);
+}
+
+.record-card.is-open .record-body {
+  display: grid;
+  gap: 14px;
+}
+
+.record-account-card {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 12px;
+  background: var(--panel);
+}
+
+.record-account-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.record-account-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.record-stage-list {
+  display: grid;
+  gap: 8px;
+}
+
+.record-stage-row {
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.02);
+  font-size: 13px;
+}
+
+.record-stage-name {
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.record-items-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.record-item-pill {
+  font-size: 12px;
+  padding: 1px 7px;
+  border-radius: 4px;
+}
+
+.record-item-pill.ok {
+  color: #047857;
+  background: #d1fae5;
+}
+
+.record-item-pill.err {
+  color: #b91c1c;
+  background: #fee2e2;
+}
+
+.record-item-pill.skip {
+  color: #4b5563;
+  background: #e5e7eb;
+}
+
+.record-logs-toggle {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--primary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.record-logs-pre {
+  margin-top: 8px;
+  padding: 10px;
+  border-radius: 6px;
+  background: #1e293b;
+  color: #cbd5e1;
+  font-size: 12px;
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}

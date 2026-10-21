@@ -10,6 +10,7 @@ accounts:
 storage:
   data_dir: data
   account_file: account.json
+  records_file: records.json
   credentials_file: credentials.yaml
   log_dir: logs
   log_file: miyouqian.log

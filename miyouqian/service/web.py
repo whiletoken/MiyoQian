@@ -25,6 +25,7 @@ from ..core import cookies
 from ..core.config import (
     bind_shop_plan_accounts,
     find_account_index_by_stuid,
+    get_record_repository,
     load_config,
     log_path,
     normalize_config,
@@ -73,6 +74,7 @@ class WebApp:
         self._ensure_password_hashed()
         self.log_file = log_path(config_path, self.config)
         configure_logger(self.log_file)
+        self.records_repo = get_record_repository(config_path, self.config)
         self.lock = threading.RLock()
         self.logs: list[str] = tail_log(self.log_file, lines=150)
         self.login_state: dict[str, Any] = {"running": False, "status": "idle"}
@@ -168,12 +170,13 @@ class WebApp:
             log_file = self.log_file
         append_log(log_file, line, component=component)
 
-    def run_all(self) -> list[str]:
+    def run_all(self, trigger: str = "scheduled") -> list[str]:
         # 执行前动态重载磁盘上的最新配置与账号，确保外部更新即时生效
         try:
             fresh_config = load_config(self.config_path)
             with self.lock:
                 self.config = fresh_config
+                self.records_repo = get_record_repository(self.config_path, self.config)
         except Exception as exc:
             self.log(f"读取最新配置文件异常: {exc}，使用当前内存配置继续", "task")
         with self.lock:
@@ -183,20 +186,36 @@ class WebApp:
             config,
             str(self.config_path),
             emit_component=lambda message, component: self.log(message, component),
+            trigger=trigger,
         )
         self.log("任务编排完成", "task")
         return []
+
+    def get_records(self, limit: int = 50) -> list[dict[str, Any]]:
+        with self.lock:
+            return self.records_repo.load(limit=limit)
+
+    def clear_records(self) -> None:
+        with self.lock:
+            self.records_repo.clear()
+        self.log("任务执行记录已清空", "system")
+
+    def latest_record(self) -> dict[str, Any] | None:
+        with self.lock:
+            return self.records_repo.latest()
 
     def status(self) -> dict[str, Any]:
         with self.lock:
             logs = list(self.logs[-300:])
             login_state = dict(self.login_state)
             shop_exchange = copy.deepcopy(self.config.get("shop_exchange", {}))
+            latest_rec = self.records_repo.latest()
         return {
             "scheduler": self.scheduler.status(),
             "exchange_scheduler": self.exchange_scheduler.status(),
             "shop_exchange": shop_exchange,
             "login": login_state,
+            "latest_record": latest_rec,
             "logs": logs,
         }
 
@@ -218,6 +237,7 @@ class WebApp:
             save_config(self.config_path, self.config)
             self.log_file = log_path(self.config_path, self.config)
             configure_logger(self.log_file)
+            self.records_repo = get_record_repository(self.config_path, self.config)
             self.scheduler.reload(self.config)
             self.exchange_scheduler.reload(self.config)
         visible_changes = [change for change in changes if should_log_config_change(*change)]
@@ -893,6 +913,11 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/status":
                 self.send_json(self.app.status())
                 return
+            if path == "/api/records":
+                limit_val = int(first_query(query, "limit", "50") or 50)
+                records = self.app.get_records(limit_val)
+                self.send_json({"records": records, "total": len(records)})
+                return
             if path == "/api/shop/goods":
                 self.send_json(self.app.shop_goods(str(first_query(query, "game"))))
                 return
@@ -937,6 +962,10 @@ class Handler(BaseHTTPRequestHandler):
                     self.app.log("手动执行请求被拒绝：任务正在运行", "scheduler")
                     self.send_error_json("任务正在运行", HTTPStatus.CONFLICT)
                     return
+                self.send_json({"ok": True})
+                return
+            if path == "/api/records/clear":
+                self.app.clear_records()
                 self.send_json({"ok": True})
                 return
             if path == "/api/login/start":

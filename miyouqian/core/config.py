@@ -39,6 +39,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "storage": {
         "data_dir": "data",
         "account_file": "account.json",
+        "records_file": "records.json",
         "credentials_file": "credentials.yaml",
         "log_dir": "logs",
         "log_file": "miyouqian.log",
@@ -151,6 +152,7 @@ def normalize_config(config: dict[str, Any]) -> None:
     storage = config.setdefault("storage", {})
     storage.setdefault("data_dir", "data")
     storage.setdefault("account_file", "account.json")
+    storage.setdefault("records_file", "records.json")
     storage.setdefault("credentials_file", "credentials.yaml")
     storage.setdefault("log_dir", "logs")
     storage.setdefault("log_file", "miyouqian.log")
@@ -537,6 +539,34 @@ def account_path(config_path: str | pathlib.Path, config: dict[str, Any]) -> pat
 def get_account_repository(config_path: str | pathlib.Path, config: dict[str, Any]) -> AccountRepository:
     """获取关联当前配置路径的 AccountRepository 实例。"""
     return AccountRepository(account_path(config_path, config))
+
+
+def records_path(config_path: str | pathlib.Path, config: dict[str, Any]) -> pathlib.Path:
+    """解析 records.json 路径，支持环境变量指定或配置指定，优先位于 data 目录。"""
+    env_path = os.environ.get("MIYOUQIAN_RECORDS_PATH")
+    if env_path:
+        return pathlib.Path(env_path)
+    storage = config.get("storage", {})
+    records_file = str(storage.get("records_file") or "records.json").strip()
+    path = pathlib.Path(records_file)
+    if path.is_absolute():
+        return path
+    data_dir = resolve_storage_path(config_path, str(storage.get("data_dir") or "data"))
+    candidate_data_dir = data_dir / path
+    if candidate_data_dir.exists():
+        return candidate_data_dir
+    config_dir = pathlib.Path(config_path).parent
+    candidate_config_dir = config_dir / path
+    if candidate_config_dir.exists():
+        return candidate_config_dir
+    return candidate_data_dir
+
+
+def get_record_repository(config_path: str | pathlib.Path, config: dict[str, Any]):
+    """获取关联当前配置路径的 RecordRepository 实例。"""
+    from .records import RecordRepository
+
+    return RecordRepository(records_path(config_path, config))
 
 
 def credentials_path(config_path: str | pathlib.Path, config: dict[str, Any]) -> pathlib.Path:
