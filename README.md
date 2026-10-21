@@ -92,7 +92,7 @@
 
 ### 方式一：Docker 容器化部署（强烈推荐）
 
-适用于各类 Linux 服务器、群晖/威联通/极空间 NAS 等环境。镜像采用**多阶段构建**，基础镜像全面采用**阿里云镜像源**（`registry.cn-hangzhou.aliyuncs.com`）与 PyPI 阿里云源加速，大幅提升国内构建与拉取成功率。
+适用于各类 Linux 服务器、群晖/威联通/极空间 NAS 等环境。镜像采用**多阶段构建**，容器内已预置配置**阿里云 Debian APT 镜像源**与**阿里云 PyPI 源**，大幅提升国内依赖构建成功率。
 
 `docker/docker-compose.yml` 预置集成了专为米游社定制的 **极验识别微服务 (test_nine)**，开箱即用：
 
@@ -113,7 +113,7 @@ docker compose up -d --build
 > [!NOTE]
 > - 容器内时区已默认配置为 `Asia/Shanghai`；
 > - 默认使用 Docker 独立命名卷 `miyouqian_state` 挂载在 `/app/state`，配置、凭据与任务记录在容器重建后均会自动持久化，不会丢失；
-> - 基础镜像默认使用阿里云源 `registry.cn-hangzhou.aliyuncs.com/library/python:3.11-slim-bookworm`，国内拉取迅速。
+> - 若国内服务器无法直连拉取 Docker Hub 基础镜像，推荐在 `/etc/docker/daemon.json` 配置加速器，或在构建时指定公共代理镜像：`BASE_IMAGE=docker.m.daocloud.io/library/python:3.11-slim-bookworm docker compose up -d --build`。
 
 #### 2. 映射宿主机已有文件（可选）
 
