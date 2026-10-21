@@ -246,6 +246,7 @@ function renderCaptchaChannels() {
       const enabled = Boolean(channel?.enable);
       const editing = editingCaptchaProviders.has(provider);
       const configured = hasCaptchaChannelConfig(channel);
+      const showFields = enabled || editing;
       return `
         <div class="push-channel" data-captcha-provider="${provider}">
           <div class="push-channel-main">
@@ -255,14 +256,14 @@ function renderCaptchaChannels() {
             </label>
             <div class="push-channel-actions">
               ${
-                configured && !editing
-                  ? `<button class="ghost icon-only" type="button" data-edit-captcha="${provider}" title="编辑${label}配置">
+                !showFields
+                  ? `<button class="ghost icon-only" type="button" data-edit-captcha="${provider}" title="展开/编辑${label}配置">
                       <svg><use href="#i-edit"></use></svg>
                     </button>`
                   : ""
               }
               ${
-                editing
+                showFields
                   ? `<button class="primary" type="button" data-save-captcha="${provider}" title="保存${label}配置">
                       <svg><use href="#i-save"></use></svg>
                       <span>保存</span>
@@ -271,7 +272,7 @@ function renderCaptchaChannels() {
               }
             </div>
           </div>
-          ${editing ? captchaChannelFields(provider, channel || emptyCaptchaChannel(provider)) : captchaChannelHiddenFields(channel)}
+          ${showFields ? captchaChannelFields(provider, channel || emptyCaptchaChannel(provider)) : captchaChannelHiddenFields(channel)}
           ${provider === "custom" && enabled ? customCaptchaTips() : ""}
         </div>
       `;
@@ -298,15 +299,11 @@ function bindCaptchaChannelEvents() {
           ...(existingChannel || {}),
           enable: true,
         });
-        if (!hasCaptchaChannelConfig(existingChannel)) {
-          editingCaptchaProviders.add(provider);
-        } else {
-          editingCaptchaProviders.delete(provider);
-          autoSaveConfig()
-            .then(() => showToast("验证码识别已启用"))
-            .catch((error) => showToast(error.message));
-        }
+        editingCaptchaProviders.add(provider);
         renderCaptchaChannels();
+        autoSaveConfig()
+          .then(() => showToast("验证码识别已启用"))
+          .catch((error) => showToast(error.message));
         return;
       }
       upsertCaptchaChannel({
@@ -332,7 +329,12 @@ function bindCaptchaChannelEvents() {
     button.addEventListener("click", async () => {
       try {
         collectConfig();
-        editingCaptchaProviders.delete(button.dataset.saveCaptcha);
+        const provider = button.dataset.saveCaptcha;
+        const channel = findCaptchaChannel(provider);
+        if (!channel?.enable) {
+          editingCaptchaProviders.delete(provider);
+        }
+        renderCaptchaChannels();
         await saveConfig("验证码识别配置已保存");
       } catch (error) {
         showToast(error.message);
@@ -543,7 +545,7 @@ function findCaptchaChannel(provider) {
 function hasCaptchaChannelConfig(channel) {
   if (!channel) return false;
   if (channel.provider === "test_nine") {
-    return true;
+    return Boolean(String(channel.url || "").trim());
   }
   if (channel.provider === "custom") {
     return Boolean(String(channel.url || "").trim());
@@ -2818,6 +2820,11 @@ function getTriggerBadge(trigger) {
       return '<span class="record-badge trigger">命令行</span>';
     case "manual":
       return '<span class="record-badge trigger">手动触发</span>';
+    case "exchange_plan":
+      return '<span class="record-badge trigger">定时兑换</span>';
+    case "exchange_manual":
+    case "exchange":
+      return '<span class="record-badge trigger">商品兑换</span>';
     default:
       return `<span class="record-badge trigger">${escapeHtml(trigger || "触发")}</span>`;
   }

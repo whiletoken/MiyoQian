@@ -80,3 +80,11 @@
 1. Dockerfile与docker-compose基础镜像全面切换为阿里云ACR镜像(registry.cn-hangzhou.aliyuncs.com/library/python:3.11-slim-bookworm)，并配置Debian阿里云APT加速源; 2. 在docker-compose.yml集成米游社极验验证码识别微服务luguoyixiazi/test_nine; 3. 在miyouqian/core/captcha.py实现TestNineCaptchaSolver策略，兼容标准/扁平JSON响应，不重试防止challenge失效; 4. WebUI和config.example.yaml与README完善对接支持。
 - **门禁校验**: 测试套件 100% 通过，工程规范校验通过。
 ---
+
+### [2026-10-21 19:47:42] STORAGE: 兑换任务日志与记录结构化持久化、验证码反显修复与全量配置JSON化
+- **记录者**: Antigravity Agent
+- **演进类型**: `storage`
+- **核心要点**:
+1. 兑换任务日志清晰化：在 ShopExchange 与 WebApp 中明确标记【兑换成功】与【兑换失败】，消除状态歧义；2. 兑换执行结果持久化：将兑换任务执行结果统一持久化至 RecordRepository (records.json)，Web 控制台记录看板无缝展示；3. 验证码识别反显修复：在 normalize_captcha_channels 补齐 test_nine 极验通道白名单与默认字典，修复前端反显与隐藏字段采集；4. 全量配置 JSON 化：支持将系统脱敏配置统一持久化保存至 config.json，具备原子替换写入并无损兼容自动迁移旧版 config.yaml。
+- **门禁校验**: 测试套件 100% 通过，工程规范校验通过。
+---

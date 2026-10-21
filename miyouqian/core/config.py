@@ -4,11 +4,13 @@
 from __future__ import annotations
 
 import copy
+import json
 import os
 import pathlib
 import random
 from typing import Any
 
+from loguru import logger
 import yaml
 
 from . import crypto
@@ -50,6 +52,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "enable": False,
         "max_retries": 3,
         "channels": [
+            {"provider": "test_nine", "enable": False, "url": "http://127.0.0.1:9645/pass_uni", "timeout": 30},
             {"provider": "damagou", "enable": False, "userkey": "", "type": "", "timeout": 60},
             {"provider": "custom", "enable": False, "url": "", "api_key": "", "timeout": 120},
         ],
@@ -86,10 +89,46 @@ DEFAULT_CONFIG: dict[str, Any] = {
 }
 
 
+def _atomic_write_json(path: pathlib.Path, data: Any) -> None:
+    """利用同目录临时文件和原子替换保证数据写入安全性，防止断电或进程中断损坏文件。"""
+    path = pathlib.Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_file = path.with_name(f"{path.name}.tmp.{os.getpid()}")
+    try:
+        with temp_file.open("w", encoding="utf-8", newline="\n") as file:
+            json.dump(data, file, ensure_ascii=False, indent=2)
+            file.flush()
+            os.fsync(file.fileno())
+        try:
+            os.chmod(temp_file, 0o600)
+        except OSError:
+            pass
+        temp_file.replace(path)
+    except Exception:
+        if temp_file.exists():
+            try:
+                temp_file.unlink()
+            except OSError:
+                pass
+        raise
+
+
 def load_config(path: str | pathlib.Path) -> dict[str, Any]:
-    """加载配置并合并 account.json 账号数据（如未迁移则自动迁移旧凭证）。"""
+    """加载配置并合并 account.json 账号数据（支持 config.json / config.yaml 平滑互通与自动迁移）。"""
     config_path = pathlib.Path(path)
-    if not config_path.exists():
+    target_file = config_path
+
+    # 优先使用现有文件，若不存在则智能寻找对应的 .json 或 .yaml
+    if not target_file.exists():
+        if target_file.suffix.lower() in {".yaml", ".yml"} and target_file.with_suffix(".json").exists():
+            target_file = target_file.with_suffix(".json")
+        elif target_file.suffix.lower() == ".json":
+            for ext in (".yaml", ".yml"):
+                if target_file.with_suffix(ext).exists():
+                    target_file = target_file.with_suffix(ext)
+                    break
+
+    if not target_file.exists():
         config = copy.deepcopy(DEFAULT_CONFIG)
         normalize_config(config)
         repo = get_account_repository(config_path, config)
@@ -99,10 +138,21 @@ def load_config(path: str | pathlib.Path) -> dict[str, Any]:
             normalize_config(config)
             bind_shop_plan_accounts(config)
         return config
-    with config_path.open("r", encoding="utf-8") as file:
-        loaded = yaml.safe_load(file) or {}
+
+    with target_file.open("r", encoding="utf-8") as file:
+        content = file.read().strip()
+    if not content:
+        loaded = {}
+    elif content.startswith("{") or target_file.suffix.lower() == ".json":
+        try:
+            loaded = json.loads(content)
+        except json.JSONDecodeError:
+            loaded = yaml.safe_load(content) or {}
+    else:
+        loaded = yaml.safe_load(content) or {}
+
     if not isinstance(loaded, dict):
-        raise ValueError(f"配置文件格式错误: {config_path}")
+        raise ValueError(f"配置文件格式错误: {target_file}")
     config = merge_dict(copy.deepcopy(DEFAULT_CONFIG), loaded)
     normalize_config(config)
 
@@ -111,11 +161,22 @@ def load_config(path: str | pathlib.Path) -> dict[str, Any]:
     config["accounts"] = accounts
     normalize_config(config)
     bind_shop_plan_accounts(config)
+
+    # 若原先读取的是 legacy .yaml 文件，且同名 .json 不存在，自动无损固化生成对应的 config.json
+    json_candidate = target_file.with_suffix(".json")
+    if target_file.suffix.lower() in {".yaml", ".yml"} and not json_candidate.exists():
+        try:
+            public_config = strip_credentials(config)
+            _atomic_write_json(json_candidate, public_config)
+            logger.info(f"[自动迁移] 成功将配置由 {target_file.name} 导出至 {json_candidate.name}")
+        except Exception as exc:
+            logger.warning(f"自动转录 JSON 配置异常: {exc}")
+
     return config
 
 
 def save_config(path: str | pathlib.Path, config: dict[str, Any]) -> None:
-    """保存配置：账号凭证写入 account.json，脱敏配置写入 config.yaml。"""
+    """保存配置：账号凭证写入 account.json，所有系统运行配置均保存至 config.json（保持原子安全写入）。"""
     normalize_config(config)
     config_path = pathlib.Path(path)
     config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -124,10 +185,27 @@ def save_config(path: str | pathlib.Path, config: dict[str, Any]) -> None:
     repo = get_account_repository(config_path, config)
     repo.save(config.get("accounts", []))
 
-    # 2. 保存普通脱敏配置到 config.yaml
+    # 2. 保存普通脱敏配置到 JSON 文件
     public_config = strip_credentials(config)
-    with config_path.open("w", encoding="utf-8", newline="\n") as file:
-        yaml.safe_dump(public_config, file, allow_unicode=True, sort_keys=False)
+    json_path = config_path if config_path.suffix.lower() == ".json" else config_path.with_suffix(".json")
+    _atomic_write_json(json_path, public_config)
+
+    # 若原传入路径为 .yaml，同步刷新一份 .yaml 以实现平滑向后兼容
+    if config_path.suffix.lower() in {".yaml", ".yml"}:
+        try:
+            temp_yaml = config_path.with_name(f"{config_path.name}.tmp.{os.getpid()}")
+            with temp_yaml.open("w", encoding="utf-8", newline="\n") as file:
+                yaml.safe_dump(public_config, file, allow_unicode=True, sort_keys=False)
+                file.flush()
+                os.fsync(file.fileno())
+            temp_yaml.replace(config_path)
+        except Exception:
+            if temp_yaml.exists():
+                try:
+                    temp_yaml.unlink()
+                except OSError:
+                    pass
+            raise
 
 
 def create_config(path: str | pathlib.Path, force: bool = False) -> pathlib.Path:
@@ -298,29 +376,32 @@ def normalize_cloud_game_enabled(value: Any) -> list[str]:
 
 
 def default_captcha_channel(provider: str) -> dict[str, Any]:
+    if provider == "test_nine":
+        return {"provider": "test_nine", "enable": False, "url": "http://127.0.0.1:9645/pass_uni", "timeout": 30}
     if provider == "custom":
         return {"provider": "custom", "enable": False, "url": "", "api_key": "", "timeout": 120}
     return {"provider": "damagou", "enable": False, "userkey": "", "type": "", "timeout": 60}
 
 
 def normalize_captcha_channels(captcha: dict[str, Any]) -> list[dict[str, Any]]:
-    allowed = ("damagou", "custom")
+    allowed = ("test_nine", "damagou", "custom")
     raw_channels = captcha.get("channels")
     if not isinstance(raw_channels, list):
         raw_channels = []
     if not raw_channels:
-        raw_channels = [{"provider": "damagou", "enable": False}]
+        raw_channels = [{"provider": "test_nine", "enable": False}]
 
     channels: list[dict[str, Any]] = []
     seen: set[str] = set()
     for raw in raw_channels:
         if not isinstance(raw, dict):
             continue
-        provider = str(raw.get("provider") or "").strip() or "damagou"
+        provider = str(raw.get("provider") or "").strip() or "test_nine"
         if provider not in allowed or provider in seen:
             continue
         seen.add(provider)
-        default_timeout = default_captcha_channel(provider)["timeout"]
+        default_channel = default_captcha_channel(provider)
+        default_timeout = default_channel["timeout"]
         try:
             timeout = max(float(raw.get("timeout") or default_timeout), 1)
             normalized_timeout: int | float = int(timeout) if timeout.is_integer() else timeout
@@ -328,9 +409,11 @@ def normalize_captcha_channels(captcha: dict[str, Any]) -> list[dict[str, Any]]:
             normalized_timeout = default_timeout
         channel: dict[str, Any] = {
             "provider": provider,
-            "enable": parse_bool(raw.get("enable", captcha.get("enable", False))),
+            "enable": parse_bool(raw.get("enable", False)),
         }
-        if provider == "custom":
+        if provider == "test_nine":
+            channel["url"] = str(raw.get("url") or default_channel["url"]).strip()
+        elif provider == "custom":
             channel["url"] = str(raw.get("url") or "").strip()
             channel["api_key"] = str(raw.get("api_key") or "").strip()
         else:

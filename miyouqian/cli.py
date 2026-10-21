@@ -26,7 +26,7 @@ from .service.runner import run_tasks
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="米游签", description="简洁的米游社签到工具")
-    parser.add_argument("-c", "--config", default="config.yaml", help="配置文件路径，默认 config.yaml")
+    parser.add_argument("-c", "--config", default="config.json", help="配置文件路径，默认 config.json（兼容 config.yaml）")
     parser.add_argument("-v", "--version", action="version", version=f"米游签 {__version__}")
     subparsers = parser.add_subparsers(dest="command", required=True)
 

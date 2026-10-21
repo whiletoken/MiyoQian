@@ -248,6 +248,68 @@ class CaptchaStrategyPatternTest(unittest.TestCase):
         self.assertIsNone(fail_res)
         self.assertIn("识别超时", messages[0])
 
+    def test_normalize_captcha_channels_preserves_test_nine(self):
+        from miyouqian.core.config import default_captcha_channel, normalize_captcha_channels
+
+        default_tn = default_captcha_channel("test_nine")
+        self.assertEqual(default_tn["provider"], "test_nine")
+        self.assertEqual(default_tn["url"], "http://127.0.0.1:9645/pass_uni")
+
+        channels = normalize_captcha_channels({
+            "channels": [
+                {"provider": "test_nine", "enable": True, "url": "http://test_nine:9645/pass_uni", "timeout": 35}
+            ]
+        })
+        providers = [c["provider"] for c in channels]
+        self.assertIn("test_nine", providers)
+        tn = next(c for c in channels if c["provider"] == "test_nine")
+        self.assertTrue(tn["enable"])
+        self.assertEqual(tn["url"], "http://test_nine:9645/pass_uni")
+        self.assertEqual(tn["timeout"], 35)
+
+
+class ConfigJsonStorageTest(unittest.TestCase):
+    def test_save_config_creates_config_json_and_loads(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            json_file = pathlib.Path(tmp_dir) / "config.json"
+            cfg = {
+                "enable": True,
+                "web": {"port": 5890},
+                "captcha": {
+                    "channels": [
+                        {"provider": "test_nine", "enable": True, "url": "http://127.0.0.1:9645/pass_uni"}
+                    ]
+                }
+            }
+            save_config(json_file, cfg)
+            self.assertTrue(json_file.exists())
+
+            # 验证确实为有效且格式化的 JSON
+            with json_file.open("r", encoding="utf-8") as f:
+                content = json.load(f)
+            self.assertEqual(content["web"]["port"], 5890)
+            self.assertTrue(content["captcha"]["enable"])
+            self.assertEqual(content["captcha"]["channels"][0]["provider"], "test_nine")
+
+            # 重新加载验证
+            loaded = load_config(json_file)
+            self.assertEqual(loaded["web"]["port"], 5890)
+            self.assertTrue(loaded["captcha"]["enable"])
+
+    def test_load_config_auto_migrates_yaml_to_json(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            yaml_file = pathlib.Path(tmp_dir) / "config.yaml"
+            json_file = pathlib.Path(tmp_dir) / "config.json"
+            yaml_file.write_text("enable: true\nweb:\n  port: 8888\n", encoding="utf-8")
+
+            loaded = load_config(yaml_file)
+            self.assertEqual(loaded["web"]["port"], 8888)
+            # 应自动生成 config.json
+            self.assertTrue(json_file.exists())
+            with json_file.open("r", encoding="utf-8") as f:
+                content = json.load(f)
+            self.assertEqual(content["web"]["port"], 8888)
+
 
 class TaskTemplateMethodTest(unittest.TestCase):
     def test_task_summary_merge(self):

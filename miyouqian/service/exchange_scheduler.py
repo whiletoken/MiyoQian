@@ -167,7 +167,7 @@ class ExchangeScheduler:
         except Exception as exc:
             with self._lock:
                 self._last_error = str(exc)
-            self.log(f"商品兑换计划 {index + 1} 执行失败: {exc}")
+            self.log(f"商品兑换计划 {index + 1} 执行失败: 【兑换失败】(异常: {exc})")
         finally:
             with self._lock:
                 self._running_plans.discard(index)

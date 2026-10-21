@@ -67,7 +67,7 @@ COPY --from=builder --chown=myq:myq /opt/venv /opt/venv
 # 复制运行时必需源码及配置（不包含测试、开发依赖与构建缓存）
 COPY --chown=myq:myq miyouqian/ ./miyouqian/
 COPY --chown=myq:myq main.py .
-COPY --chown=myq:myq config.example.yaml .
+COPY --chown=myq:myq config.example.yaml config.example.json ./
 COPY --chown=myq:myq docker/entrypoint.sh /entrypoint.sh
 
 # 兼容 Windows CRLF 换行符并设置启动脚本权限
@@ -83,4 +83,4 @@ HEALTHCHECK --interval=60s --timeout=5s --start-period=20s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5890/api/auth/status', timeout=3).read()"
 
 ENTRYPOINT ["/entrypoint.sh"]
-CMD ["python", "main.py", "--config", "/app/state/config.yaml", "serve", "--host", "0.0.0.0", "--port", "5890"]
+CMD ["python", "main.py", "--config", "/app/state/config.json", "serve", "--host", "0.0.0.0", "--port", "5890"]
