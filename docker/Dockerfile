@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=python:3.11-slim-bookworm
+ARG BASE_IMAGE=docker.m.daocloud.io/library/python:3.11-slim-bookworm
 ARG UV_IMAGE=ghcr.nju.edu.cn/astral-sh/uv:0.7.3
 
 # ==================== 构建阶段 ====================

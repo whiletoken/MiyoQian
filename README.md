@@ -113,7 +113,7 @@ docker compose up -d --build
 > [!NOTE]
 > - 容器内时区已默认配置为 `Asia/Shanghai`；
 > - 默认使用 Docker 独立命名卷 `miyouqian_state` 挂载在 `/app/state`，配置、凭据与任务记录在容器重建后均会自动持久化，不会丢失；
-> - 若国内服务器无法直连拉取 Docker Hub 基础镜像，推荐在 `/etc/docker/daemon.json` 配置加速器，或在构建时指定公共代理镜像：`BASE_IMAGE=docker.m.daocloud.io/library/python:3.11-slim-bookworm docker compose up -d --build`。
+> - 基础镜像默认已配置国内高速源 `docker.m.daocloud.io/library/python:3.11-slim-bookworm`，国内环境下可直接秒级拉取，无需额外认证；如需使用其他私有源亦可通过 `BASE_IMAGE` 变量灵活覆盖。
 
 #### 2. 映射宿主机已有文件（可选）
 

@@ -4,7 +4,7 @@ services:
       context: ..
       dockerfile: docker/Dockerfile
       args:
-        BASE_IMAGE: ${BASE_IMAGE:-python:3.11-slim-bookworm}
+        BASE_IMAGE: ${BASE_IMAGE:-docker.m.daocloud.io/library/python:3.11-slim-bookworm}
         PYPI_MIRROR: ${PYPI_MIRROR:-https://mirrors.aliyun.com/pypi}
     container_name: miyouqian
     restart: unless-stopped
