@@ -1,14 +1,72 @@
-.venv/
-__pycache__/
-*.pyc
+# ==================== 版本控制与 CI/CD ====================
 .git/
 .github/
 .gitignore
+.gitattributes
+
+# ==================== Python 与虚拟环境 ====================
+.venv/
+venv/
+ENV/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ==================== 测试与代码检查 ====================
+/tests/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# ==================== IDE 与操作系统临时文件 ====================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ==================== 本地运行数据与凭证（通过 Docker 卷隔离） ====================
 config.yaml
-qrcode.png
-logs/
-data/
+*.yaml.bak
+/data/
+/logs/
+/state/
 *.log
+*.tmp
+*.sqlite
+*.sqlite3
+*.db
+*.pid
+qrcode.png
 .env
-assets/
-tests/
+.env.*
+
+# ==================== 项目非运行时素材与文档 ====================
+# 注意：仅忽略根目录宣传素材 assets/，保留 miyouqian/webui/assets 静态资源
+/assets/
+README.md
+docs/
+index.py
+.python-version

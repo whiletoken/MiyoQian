@@ -3,6 +3,8 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
+      args:
+        PYPI_MIRROR: ${PYPI_MIRROR:-https://mirrors.aliyun.com/pypi}
     container_name: miyouqian
     restart: unless-stopped
     init: true
