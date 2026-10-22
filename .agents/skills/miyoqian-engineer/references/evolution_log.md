@@ -88,3 +88,11 @@
 1. 兑换任务日志清晰化：在 ShopExchange 与 WebApp 中明确标记【兑换成功】与【兑换失败】，消除状态歧义；2. 兑换执行结果持久化：将兑换任务执行结果统一持久化至 RecordRepository (records.json)，Web 控制台记录看板无缝展示；3. 验证码识别反显修复：在 normalize_captcha_channels 补齐 test_nine 极验通道白名单与默认字典，修复前端反显与隐藏字段采集；4. 全量配置 JSON 化：支持将系统脱敏配置统一持久化保存至 config.json，具备原子替换写入并无损兼容自动迁移旧版 config.yaml。
 - **门禁校验**: 测试套件 100% 通过，工程规范校验通过。
 ---
+
+### [2026-10-22 08:36:54] ARCH: 移除 Web 控制台密码登录与认证限制，实现页面直接免密访问
+- **记录者**: Antigravity Agent
+- **演进类型**: `arch`
+- **核心要点**:
+1. 架构精简：剥离 Web 控制台强制设置与校验外网密码的认证机制，移除 session 管理、密码散列与校验函数；2. 路由无阻：全面开放 Web 静态资源与全部 /api/* 接口直接访问，保留 /api/auth/* 协议兼容存根；3. 前端轻量化：移除 app.js 弹窗遮罩逻辑 (showAuthPage、checkAuthAndInit) 与 app.css 对应样式，页面加载直接进入主程序；4. 模板与配置解耦：清理 config.example.json、config.example.yaml 与 config.py 中废弃的 web.password 默认项；5. 自动化测试保障：新增 test_web_service.py 覆盖无凭证直接访问、配置热更与老路由兼容，同步更新 node 端 shop plan 驱动测试。
+- **门禁校验**: 测试套件 100% 通过，工程规范校验通过。
+---

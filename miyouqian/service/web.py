@@ -5,12 +5,10 @@ from __future__ import annotations
 
 import base64
 import copy
-import hashlib
 import io
 import json
 import mimetypes
 import pathlib
-import secrets
 import threading
 import time
 from datetime import datetime
@@ -43,27 +41,9 @@ from .scheduler import DailyScheduler
 WEB_ROOT = pathlib.Path(__file__).resolve().parents[1] / "webui"
 
 # ---------------------------------------------------------------------------
-# 密码认证工具
+# 认证兼容工具
 # ---------------------------------------------------------------------------
 AUTH_COOKIE = "myq_token"
-
-
-def hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode("utf-8")).hexdigest()
-
-
-def is_hashed_password(value: str) -> bool:
-    return len(value) == 64 and all(c in "0123456789abcdef" for c in value)
-
-
-def check_password(password: str, stored_hash: str) -> bool:
-    if not stored_hash:
-        return False
-    return secrets.compare_digest(hash_password(password), stored_hash)
-
-
-def is_external_host(host: str) -> bool:
-    return host not in ("127.0.0.1", "localhost", "::1")
 
 
 class WebApp:
@@ -72,7 +52,6 @@ class WebApp:
         self.config = load_config(config_path)
         self.host = host
         self.port = port
-        self._ensure_password_hashed()
         self.log_file = log_path(config_path, self.config)
         configure_logger(self.log_file)
         self.records_repo = get_record_repository(config_path, self.config)
@@ -88,68 +67,25 @@ class WebApp:
             self.run_shop_exchange_plan,
             lambda message: self.log(message, "exchange"),
         )
-        self._sessions: dict[str, float] = {}
-
-    def _ensure_password_hashed(self) -> None:
-        web = self.config.get("web", {})
-        password = str(web.get("password", ""))
-        if password and not is_hashed_password(password):
-            web["password"] = hash_password(password)
-            save_config(self.config_path, self.config)
 
     @property
     def need_auth(self) -> bool:
-        # 为了保证不会因为命令行参数、配置文件在无意间被调整导致 Web 控制台泄露到本机之外，要求首次访问 Web 控制台时必须设置一个外网访问密码
-        stored_hash = self.config.get("web", {}).get("password", "")
-        if not stored_hash:
-            return True
-        return is_external_host(str(self.host))
+        return False
 
     @property
     def password_is_set(self) -> bool:
-        return bool(self.config.get("web", {}).get("password", ""))
-
-    def _create_session(self) -> str:
-        token = secrets.token_hex(32)
-        with self.lock:
-            self._sessions[token] = True
-        return token
-
-    def _check_session(self, token: str) -> bool:
-        if not token:
-            return False
-        with self.lock:
-            return token in self._sessions
-
-    def _revoke_session(self, token: str) -> None:
-        with self.lock:
-            self._sessions.pop(token, None)
+        return False
 
     def auth_setup(self, password: str) -> str:
-        if self.password_is_set:
-            raise ValueError("密码已设置，不能重复设置")
-        if len(password) < 8:
-            raise ValueError("密码长度至少 8 位")
-        with self.lock:
-            self.config.setdefault("web", {})["password"] = hash_password(password)
-            save_config(self.config_path, self.config)
-        self.log("已设置外网访问密码", "auth")
-        return self._create_session()
+        return ""
 
     def auth_login(self, password: str) -> str:
-        if not self.need_auth:
-            raise ValueError("当前为内网模式，无需登录")
-        stored_hash = self.config.get("web", {}).get("password", "")
-        if not stored_hash:
-            raise ValueError("密码未设置，请先设置密码")
-        if not check_password(password, stored_hash):
-            raise ValueError("密码错误")
-        return self._create_session()
+        return ""
 
     def auth_status(self) -> dict[str, Any]:
         return {
-            "need_auth": self.need_auth,
-            "password_set": self.password_is_set,
+            "need_auth": False,
+            "password_set": False,
         }
 
     def start(self) -> None:
@@ -996,10 +932,7 @@ class Handler(BaseHTTPRequestHandler):
         return ""
 
     def _is_authenticated(self) -> bool:
-        if not self.app.need_auth:
-            return True
-        token = self._get_cookie(AUTH_COOKIE)
-        return self.app._check_session(token)
+        return True
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
@@ -1008,9 +941,6 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path == "/api/auth/status":
                 self.send_json(self.app.auth_status())
-                return
-            if not self._is_authenticated() and path.startswith("/api/"):
-                self.send_error_json("未登录", HTTPStatus.UNAUTHORIZED)
                 return
             if path == "/api/config":
                 self.send_json(self.app.get_config())
@@ -1045,16 +975,8 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         try:
             payload = self.read_json()
-            if path == "/api/auth/setup":
-                token = self.app.auth_setup(str(payload.get("password", "")))
-                self.send_json({"ok": True}, set_cookie=token)
-                return
-            if path == "/api/auth/login":
-                token = self.app.auth_login(str(payload.get("password", "")))
-                self.send_json({"ok": True}, set_cookie=token)
-                return
-            if not self._is_authenticated():
-                self.send_error_json("未登录", HTTPStatus.UNAUTHORIZED)
+            if path in ("/api/auth/setup", "/api/auth/login"):
+                self.send_json({"ok": True})
                 return
             if path == "/api/config":
                 self.app.set_config(payload)
@@ -1226,12 +1148,6 @@ def serve(config_path: pathlib.Path, host: str, port: int) -> None:
     Handler.app = app
     print_startup_banner("MYQ")
     app.log(f"正在启动 Web 控制台，配置文件: {config_path.resolve()}", "startup")
-    if not app.password_is_set:
-        app.log("您尚未设置外网访问密码！首次访问 Web 控制台时请您妥善设置并保管外网访问密码！", "auth")
-    if host in ("127.0.0.1", "localhost", "::1"):
-        app.log("您设置了仅监听本机，访问 Web 控制台时将不校验外网访问密码，请您知悉。", "auth")
-    else:
-        app.log("您设置了监听外网，访问 Web 控制台时将校验外网访问密码，请您妥善设置并保管外网访问密码！", "auth")
     server, actual_port = create_server(host, port)
     app.port = actual_port
     if actual_port != port:

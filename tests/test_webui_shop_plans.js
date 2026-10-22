@@ -9,7 +9,7 @@ const source = fs.readFileSync(
   path.join(__dirname, "../miyouqian/webui/app.js"),
   "utf8",
 );
-assert.match(source, /\ncheckAuthAndInit\(\);\s*$/);
+assert.match(source, /\nstartApp\(\);\s*$/);
 const ui = vm.createContext({
   document: {
     querySelectorAll: () => [],
@@ -17,7 +17,7 @@ const ui = vm.createContext({
     addEventListener() {},
   },
 });
-vm.runInContext(source.replace(/\ncheckAuthAndInit\(\);\s*$/, "\n"), ui);
+vm.runInContext(source.replace(/\nstartApp\(\);\s*$/, "\n"), ui);
 
 const A = { name: "a", stuid: "1001" };
 const B = { name: "b", stuid: "1002" };

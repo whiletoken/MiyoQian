@@ -74,8 +74,7 @@
   },
   "web": {
     "host": "127.0.0.1",
-    "port": 5890,
-    "password": ""
+    "port": 5890
   },
   "games": {
     "enabled": [
