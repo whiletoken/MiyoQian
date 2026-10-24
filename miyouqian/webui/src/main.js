@@ -3,7 +3,8 @@
 // ===========================================================================
 
 async function refreshStatus() {
-  const status = await api("/api/status");
+  const needsLogs = activeView === "logs";
+  const status = await api(`/api/status?logs=${needsLogs ? "1" : "0"}`);
   const scheduler = status.scheduler || {};
   const exchangeScheduler = status.exchange_scheduler || {};
   const shopExchange = status.shop_exchange || null;
@@ -120,7 +121,7 @@ function switchView(view) {
   } else if (activeView === "records") {
     loadRecords().catch((error) => showToast(error.message));
   } else if (activeView === "logs") {
-    scrollLogsToBottom();
+    refreshStatus().then(() => scrollLogsToBottom()).catch(() => {});
   }
 }
 
@@ -291,17 +292,32 @@ function bindEvents() {
 bindEvents();
 switchView(activeView);
 
+let statusPollingTimer = null;
+
+function schedulePolling() {
+  if (statusPollingTimer) clearInterval(statusPollingTimer);
+  statusPollingTimer = setInterval(() => {
+    if (typeof document !== "undefined" && document.hidden) return;
+    refreshStatus().catch(() => {});
+  }, 3000);
+}
+
 function startApp() {
   initSelectArrows();
   injectArrowSymbol();
+  if (typeof document !== "undefined") {
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) {
+        refreshStatus().catch(() => {});
+      }
+    });
+  }
   loadConfig()
     .then(refreshStatus)
     .catch((error) => {
       showToast(error.message);
     });
-  setInterval(() => {
-    refreshStatus().catch(() => {});
-  }, 3000);
+  schedulePolling();
 }
 
 startApp();

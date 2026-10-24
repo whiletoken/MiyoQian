@@ -2,6 +2,49 @@
 // 多账号列表管理与云游戏凭据配置
 // ===========================================================================
 
+const accountPointsCache = new Map();
+let accountPointsLoading = new Set();
+
+async function fetchAccountPoints(index, silent = false) {
+  const account = (config?.accounts || [])[index];
+  if (!account || !account.stuid) return;
+  if (accountPointsLoading.has(index)) return;
+
+  accountPointsLoading.add(index);
+  const valEl = $(`accountPointsVal-${index}`);
+  if (valEl) valEl.textContent = "查询中…";
+
+  try {
+    const res = await api(`/api/account/points?account_index=${index}`);
+    if (res?.ok) {
+      accountPointsCache.set(index, res.points ?? 0);
+      if (valEl) valEl.textContent = `${res.points ?? 0} 米游币`;
+      if (!silent) {
+        showToast(`${accountLabel(account)} 米游币余额：${res.points ?? 0}`);
+      }
+    } else {
+      if (valEl) valEl.textContent = "获取失败";
+      if (!silent) showToast(res?.error || res?.message || "米游币余额获取失败");
+    }
+  } catch (err) {
+    if (valEl) valEl.textContent = "获取失败";
+    if (!silent) showToast(`获取失败: ${err.message}`);
+  } finally {
+    accountPointsLoading.delete(index);
+  }
+}
+
+function lazyLoadAccountPoints() {
+  const accounts = config?.accounts || [];
+  accounts.forEach((account, index) => {
+    if (account.stuid && !accountPointsCache.has(index) && !accountPointsLoading.has(index)) {
+      setTimeout(() => {
+        fetchAccountPoints(index, true).catch(() => {});
+      }, (index + 1) * 300);
+    }
+  });
+}
+
 function renderAccounts() {
   const accounts = config.accounts || [];
   $("accounts").innerHTML = accounts.length
@@ -20,6 +63,14 @@ function renderAccounts() {
                 }
               </strong>
               <small>${account.stuid ? `UID ${escapeHtml(account.stuid)}` : "未登录"}</small>
+              ${
+                account.stuid
+                  ? `<button class="account-points-badge" type="button" data-refresh-points="${index}" title="点击刷新米游币余额">
+                      <span class="points-icon">🪙</span>
+                      <span class="points-val" id="accountPointsVal-${index}">${accountPointsCache.has(index) ? accountPointsCache.get(index) + " 米游币" : "查询米游币"}</span>
+                    </button>`
+                  : ""
+              }
             </div>
             <div class="account-actions">
               ${
@@ -65,6 +116,15 @@ function renderAccounts() {
         <strong>暂无账号</strong>
         <span>添加账号后，可在账号卡片内登录。</span>
       </div>`;
+  document.querySelectorAll("[data-refresh-points]").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const index = Number(el.dataset.refreshPoints);
+      fetchAccountPoints(index, false);
+    });
+  });
+  lazyLoadAccountPoints();
+
   document.querySelectorAll("[data-login]").forEach((button) => {
     button.addEventListener("click", () => {
       showLoginMethods(Number(button.dataset.login)).catch((error) =>

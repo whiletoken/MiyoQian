@@ -147,84 +147,129 @@
           </div>
         </section>
 
-        <section class="app-layout">
-          <div class="config-column">
-            <details class="panel" open>
-              <summary>
-                <span>
-                  <strong>账号</strong>
-                  <small>添加后登录</small>
-                </span>
-                <span class="disclosure" aria-hidden="true"></span>
-              </summary>
-              <div class="section-toolbar">
+                <section class="dashboard-layout">
+          <!-- 左栏：账号管理与凭据 -->
+          <div class="dashboard-col dashboard-accounts-col">
+            <article class="panel" id="accountsPanel">
+              <div class="panel-head accounts-head">
+                <div>
+                  <h2>账号管理</h2>
+                  <p>管理米游社账号与云游戏凭据，实时查询米游币余额</p>
+                </div>
                 <button
-                  class="ghost"
+                  class="primary btn-sm"
                   id="addAccountBtn"
                   type="button"
                   title="添加账号"
                 >
                   <svg><use href="#i-plus"></use></svg>
-                  <span>添加</span>
+                  <span>添加账号</span>
                 </button>
               </div>
               <div id="accounts"></div>
+            </article>
+          </div>
+
+          <!-- 右栏：任务编排与定时调度 -->
+          <div class="dashboard-col dashboard-settings-col">
+            <details class="panel" open>
+              <summary>
+                <span>
+                  <strong>每日自动调度</strong>
+                  <small>定时执行与随机波动防检测</small>
+                </span>
+                <span class="disclosure" aria-hidden="true"></span>
+              </summary>
+              <div class="panel-body">
+                <label class="check-row">
+                  <input id="scheduleEnable" type="checkbox" data-autosave />
+                  <span>启用每日自动执行</span>
+                </label>
+                <div class="form-grid two">
+                  <label>
+                    <span>执行时间</span>
+                    <input id="scheduleTime" type="time" data-autosave />
+                  </label>
+                  <label>
+                    <span>随机波动分钟</span>
+                    <input
+                      id="scheduleJitter"
+                      type="number"
+                      min="0"
+                      max="720"
+                      step="1"
+                      data-autosave
+                    />
+                  </label>
+                </div>
+                <label class="check-row">
+                  <input id="runOnStart" type="checkbox" data-autosave />
+                  <span>服务启动后立即执行一次</span>
+                </label>
+              </div>
             </details>
 
             <details class="panel" open>
               <summary>
                 <span>
-                  <strong>任务配置</strong>
-                  <small>游戏社区、云游戏与米游币任务</small>
+                  <strong>游戏社区签到</strong>
+                  <small>原神、星穹铁道、绝区零等国内游戏签到</small>
                 </span>
                 <span class="disclosure" aria-hidden="true"></span>
               </summary>
-              <div class="task-group" id="gameTaskGroup">
-                <label class="check-row task-switch">
-                  <input id="gameCheckin" type="checkbox" data-autosave />
-                  <span>游戏社区签到</span>
-                </label>
-                <div class="chips" id="gameChips"></div>
+              <div class="panel-body">
+                <div class="task-group" id="gameTaskGroup">
+                  <label class="check-row task-switch">
+                    <input id="gameCheckin" type="checkbox" data-autosave />
+                    <span>启用游戏社区每日签到</span>
+                  </label>
+                  <div class="chips" id="gameChips"></div>
+                </div>
               </div>
-              <div class="task-group" id="cloudGameTaskGroup">
-                <label class="check-row task-switch">
-                  <input id="cloudGameCheckin" type="checkbox" data-autosave />
-                  <span>云游戏签到</span>
-                </label>
-                <div class="chips" id="cloudGameChips"></div>
-              </div>
-              <div class="task-group" id="bbsTaskGroup">
-                <label class="check-row task-switch">
-                  <input id="bbsTasks" type="checkbox" data-autosave />
-                  <span>米游币任务</span>
-                </label>
-                <label class="check-row task-switch">
-                  <input id="bbsCheckin" type="checkbox" data-autosave />
-                  <span>社区签到</span>
-                </label>
-                <div class="chips compact" id="bbsForumChips"></div>
-                <div class="form-grid three compact">
-                  <label
-                    class="check-row disabled"
-                    title="米游社改版，社区互动已无法获取米游币，待新获取方式更新~"
-                  >
-                    <input id="bbsLike" type="checkbox" data-autosave disabled />
-                    <span>点赞</span>
+            </details>
+
+            <details class="panel" open>
+              <summary>
+                <span>
+                  <strong>米游币社区任务</strong>
+                  <small>米游社论坛签到与米游币获取</small>
+                </span>
+                <span class="disclosure" aria-hidden="true"></span>
+              </summary>
+              <div class="panel-body">
+                <div class="task-group" id="bbsTaskGroup">
+                  <label class="check-row task-switch">
+                    <input id="bbsTasks" type="checkbox" data-autosave />
+                    <span>启用米游币任务</span>
                   </label>
-                  <label
-                    class="check-row disabled"
-                    title="米游社改版，社区互动已无法获取米游币，待新获取方式更新~"
-                  >
-                    <input id="bbsRead" type="checkbox" data-autosave disabled />
-                    <span>看帖</span>
+                  <label class="check-row task-switch">
+                    <input id="bbsCheckin" type="checkbox" data-autosave />
+                    <span>启用讨论区社区签到</span>
                   </label>
-                  <label
-                    class="check-row disabled"
-                    title="米游社改版，社区互动已无法获取米游币，待新获取方式更新~"
-                  >
-                    <input id="bbsShare" type="checkbox" data-autosave disabled />
-                    <span>分享</span>
-                  </label>
+                  <div class="chips compact" id="bbsForumChips"></div>
+                  <div class="form-grid three compact">
+                    <label
+                      class="check-row disabled"
+                      title="米游社改版，社区互动已无法获取米游币，待新获取方式更新~"
+                    >
+                      <input id="bbsLike" type="checkbox" data-autosave disabled />
+                      <span>点赞</span>
+                    </label>
+                    <label
+                      class="check-row disabled"
+                      title="米游社改版，社区互动已无法获取米游币，待新获取方式更新~"
+                    >
+                      <input id="bbsRead" type="checkbox" data-autosave disabled />
+                      <span>看帖</span>
+                    </label>
+                    <label
+                      class="check-row disabled"
+                      title="米游社改版，社区互动已无法获取米游币，待新获取方式更新~"
+                    >
+                      <input id="bbsShare" type="checkbox" data-autosave disabled />
+                      <span>分享</span>
+                    </label>
+                  </div>
                 </div>
               </div>
             </details>
@@ -232,64 +277,48 @@
             <details class="panel">
               <summary>
                 <span>
-                  <strong>每日调度</strong>
-                  <small>自动运行</small>
+                  <strong>云游戏每日签到</strong>
+                  <small>云原神、云绝区零获取免费时长</small>
                 </span>
                 <span class="disclosure" aria-hidden="true"></span>
               </summary>
-              <label class="check-row">
-                <input id="scheduleEnable" type="checkbox" data-autosave />
-                <span>启用每日自动执行</span>
-              </label>
-              <div class="form-grid two">
-                <label>
-                  <span>执行时间</span>
-                  <input id="scheduleTime" type="time" data-autosave />
-                </label>
-                <label>
-                  <span>随机波动分钟</span>
-                  <input
-                    id="scheduleJitter"
-                    type="number"
-                    min="0"
-                    max="720"
-                    step="1"
-                    data-autosave
-                  />
-                </label>
+              <div class="panel-body">
+                <div class="task-group" id="cloudGameTaskGroup">
+                  <label class="check-row task-switch">
+                    <input id="cloudGameCheckin" type="checkbox" data-autosave />
+                    <span>启用云游戏签到</span>
+                  </label>
+                  <div class="chips" id="cloudGameChips"></div>
+                </div>
               </div>
-              <label class="check-row">
-                <input id="runOnStart" type="checkbox" data-autosave />
-                <span>启动后执行一次</span>
-              </label>
             </details>
 
             <details class="panel">
               <summary>
                 <span>
-                  <strong>验证码识别</strong>
-                  <small>默认关闭，启用请配置打码平台</small>
+                  <strong>验证码识别服务</strong>
+                  <small>极验验证码自动识别打码配置</small>
                 </span>
                 <span class="disclosure" aria-hidden="true"></span>
               </summary>
-              <div class="form-grid compact">
-                <label>
-                  <span>重试次数</span>
-                  <input
-                    id="captchaMaxRetries"
-                    type="number"
-                    min="1"
-                    max="10"
-                    step="1"
-                    data-autosave
-                  />
-                </label>
+              <div class="panel-body">
+                <div class="form-grid compact">
+                  <label>
+                    <span>重试次数</span>
+                    <input
+                      id="captchaMaxRetries"
+                      type="number"
+                      min="1"
+                      max="10"
+                      step="1"
+                      data-autosave
+                    />
+                  </label>
+                </div>
+                <div class="push-channel-list" id="captchaChannels"></div>
               </div>
-              <div class="push-channel-list" id="captchaChannels"></div>
             </details>
           </div>
-
-
         </section>
       </section>
 

@@ -112,6 +112,26 @@ class WebShopMixin:
             )
             return result
 
+    def account_points(self, account_index: int) -> dict[str, Any]:
+        try:
+            account = self._account_by_index(account_index)
+        except Exception as exc:
+            return {"ok": False, "points": 0, "message": str(exc)}
+        account_name = display_account_name(account)
+        if not account.get("stuid") or not account.get("cookie"):
+            return {"ok": False, "points": 0, "message": "账号未登录"}
+        with self.lock:
+            config = copy.deepcopy(self.config)
+        try:
+            with _get_api_client()(timeout=10.0) as client:
+                shop = _get_shop_exchange()(client, config, account)
+                data = shop.points()
+                points = int(data.get("points") or 0)
+                return {"ok": True, "points": points}
+        except Exception as exc:
+            self.log(f"获取账号 {account_name} 米游币余额异常: {exc}", "exchange")
+            return {"ok": False, "points": 0, "error": str(exc), "message": str(exc)}
+
     def _persist_exchange_record(
         self,
         *,

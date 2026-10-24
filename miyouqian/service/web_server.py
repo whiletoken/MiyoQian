@@ -60,7 +60,20 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(self.app.get_config())
                 return
             if path == "/api/status":
-                self.send_json(self.app.status())
+                include_logs = first_query(query, "logs", "1") not in ("0", "false")
+                self.send_json(self.app.status(include_logs=include_logs))
+                return
+            if path == "/api/account/points":
+                raw_idx = first_query(query, "index") or first_query(query, "account_index")
+                if not raw_idx:
+                    self.send_json({"ok": False, "message": "缺少账号索引"})
+                    return
+                try:
+                    account_index = int(raw_idx)
+                except (ValueError, TypeError):
+                    self.send_json({"ok": False, "message": "无效的账号索引"})
+                    return
+                self.send_json(self.app.account_points(account_index))
                 return
             if path == "/api/records":
                 try:

@@ -157,9 +157,9 @@ class WebApp(WebLoginMixin, WebShopMixin):
         with self.lock:
             return self.records_repo.latest()
 
-    def status(self) -> dict[str, Any]:
+    def status(self, include_logs: bool = True) -> dict[str, Any]:
         with self.lock:
-            logs = list(self.logs[-300:])
+            logs = list(self.logs[-300:]) if include_logs else []
             login_state = dict(self.login_state)
             shop_exchange = copy.deepcopy(self.config.get("shop_exchange", {}))
             latest_rec = self.records_repo.latest()
