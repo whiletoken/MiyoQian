@@ -16,10 +16,17 @@ RunFn = Callable[[], list[str]]
 
 
 class DailyScheduler:
-    def __init__(self, config: dict[str, Any], run_fn: RunFn, log_fn: LogFn) -> None:
+    def __init__(
+        self,
+        config: dict[str, Any],
+        run_fn: RunFn,
+        log_fn: LogFn,
+        get_records_fn: Callable[[], list[dict[str, Any]]] | None = None,
+    ) -> None:
         self.config = config
         self.run_fn = run_fn
         self.log = log_fn
+        self.get_records_fn = get_records_fn
         self._stop = threading.Event()
         self._wake = threading.Event()
         self._thread: threading.Thread | None = None
@@ -32,6 +39,9 @@ class DailyScheduler:
         self._last_error = ""
         self._schedule_signature = self._make_schedule_signature(self._schedule_config())
         self._log_next_run_on_recompute = False
+        self._failed_patrol_dates: set[str] = set()
+        self._retry_cooldown_seconds: int = 120
+        self._max_patrol_attempts: int = 3
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -82,7 +92,145 @@ class DailyScheduler:
                 "last_run": self._last_run.isoformat(timespec="seconds") if self._last_run else "",
                 "last_error": self._last_error,
                 "schedule": self._schedule_config(),
+                "patrol": self.get_patrol_status(),
             }
+
+    def get_patrol_status(self) -> dict[str, Any]:
+        schedule = self._schedule_config()
+        if not schedule.get("enable", True) or not self.get_records_fn:
+            return {"enabled": False}
+        try:
+            hour, minute = parse_time(str(schedule.get("time", "09:00")))
+        except Exception:
+            hour, minute = 9, 0
+        now = datetime.now()
+        today = now.date()
+        today_scheduled = datetime.combine(today, datetime.min.time()).replace(hour=hour, minute=minute)
+        past_scheduled = now >= today_scheduled
+        records: list[dict[str, Any]] = []
+        try:
+            records = self.get_records_fn()
+        except Exception:
+            pass
+        today_records = self._get_today_signin_records(records, today)
+        has_success = any(r.get("status") == "success" for r in today_records)
+        today_attempts = [
+            r for r in today_records
+            if (self._parse_record_datetime(r) or datetime.min) >= today_scheduled
+        ]
+        return {
+            "enabled": True,
+            "past_scheduled": past_scheduled,
+            "today_signed_in": has_success,
+            "today_attempts": len(today_attempts),
+            "max_attempts": self._max_patrol_attempts,
+            "stopped_for_today": len(today_attempts) >= self._max_patrol_attempts and not has_success,
+        }
+
+    @staticmethod
+    def _parse_record_datetime(r: dict[str, Any]) -> datetime | None:
+        ts = str(r.get("timestamp") or "").strip()
+        if ts:
+            try:
+                clean_ts = ts.split(".")[0].split("+")[0].strip()
+                return datetime.strptime(clean_ts, "%Y-%m-%d %H:%M:%S")
+            except Exception:
+                pass
+        rec_id = str(r.get("id") or "").strip()
+        if rec_id:
+            try:
+                return datetime.strptime(rec_id.split(".")[0], "%Y%m%d_%H%M%S")
+            except Exception:
+                pass
+        return None
+
+    def _get_today_signin_records(self, records: list[dict[str, Any]], today_date: Any) -> list[dict[str, Any]]:
+        today_prefix = today_date.strftime("%Y-%m-%d")
+        today_id_prefix = today_date.strftime("%Y%m%d")
+        today_list = []
+        for r in records:
+            trigger = str(r.get("trigger") or "")
+            task_type = str(r.get("task_type") or "")
+            if trigger.startswith("exchange") or task_type == "shop_exchange":
+                continue
+            ts = str(r.get("timestamp") or "")
+            rec_id = str(r.get("id") or "")
+            dt = self._parse_record_datetime(r)
+            if (dt and dt.date() == today_date) or ts.startswith(today_prefix) or rec_id.startswith(today_id_prefix):
+                today_list.append(r)
+        return today_list
+
+    def _inspect_and_retry(self, schedule: dict[str, Any]) -> bool:
+        """巡检功能：检查执行记录列表，若超过当日定时时间且未签到，自动尝试最多3次，超过3次认定失败，当日不再尝试。"""
+        if not schedule.get("enable", True) or not self.config.get("enable", True):
+            return False
+        if not self.get_records_fn:
+            return False
+
+        try:
+            hour, minute = parse_time(str(schedule.get("time", "09:00")))
+        except Exception:
+            hour, minute = 9, 0
+
+        now = datetime.now()
+        today = now.date()
+        today_str = today.strftime("%Y-%m-%d")
+        today_scheduled = datetime.combine(today, datetime.min.time()).replace(hour=hour, minute=minute)
+
+        # 未到当日定时时间，由正常调度流程处理
+        if now < today_scheduled:
+            return False
+
+        try:
+            records = self.get_records_fn()
+        except Exception as exc:
+            self.log(f"巡检读取执行记录异常: {exc}")
+            return False
+
+        today_records = self._get_today_signin_records(records, today)
+
+        # 检查当日是否已成功签到
+        has_success = any(r.get("status") == "success" for r in today_records)
+        if has_success:
+            return False
+
+        # 统计在当日预定时间到达或之后进行的尝试（包含常规调度及巡检重试）
+        today_attempts = [
+            r for r in today_records
+            if (self._parse_record_datetime(r) or datetime.min) >= today_scheduled
+        ]
+        attempt_count = len(today_attempts)
+
+        # 超过 3 次认定失败，当日不再尝试
+        if attempt_count >= self._max_patrol_attempts:
+            if today_str not in self._failed_patrol_dates:
+                self._failed_patrol_dates.add(today_str)
+                self.log(
+                    f"今日签到任务巡检：已超过定时时间 {today_scheduled.strftime('%H:%M')}，"
+                    f"且已累计尝试 {attempt_count} 次（已达上限 {self._max_patrol_attempts} 次），"
+                    f"认定今日签到失败，当日不再尝试"
+                )
+            return False
+
+        # 检查重试冷却间隔（默认 120 秒），防止短时间内高频冲击
+        if today_attempts:
+            latest_attempt_time = max(
+                (self._parse_record_datetime(r) or datetime.min)
+                for r in today_attempts
+            )
+            if (now - latest_attempt_time).total_seconds() < self._retry_cooldown_seconds:
+                return False
+
+        # 触发自动尝试
+        attempt_num = attempt_count + 1
+        self.log(
+            f"今日签到任务巡检：超过预定时间 {today_scheduled.strftime('%H:%M')} 且今日尚未签到成功，"
+            f"自动执行第 {attempt_num}/{self._max_patrol_attempts} 次尝试..."
+        )
+        with self._lock:
+            self._running = True
+        self._run_once(trigger="patrol")
+        return True
 
     def _loop(self) -> None:
         if self._schedule_config().get("run_on_start", False):
@@ -96,6 +244,16 @@ class DailyScheduler:
                     self._wake.wait(timeout=30)
                     self._wake.clear()
                     continue
+
+                # 优先执行巡检重试
+                with self._lock:
+                    is_running = self._running
+                if not is_running:
+                    retried = self._inspect_and_retry(schedule)
+                    if retried:
+                        self._wake.clear()
+                        continue
+
                 with self._lock:
                     if self._next_run is None:
                         log_change = self._log_next_run_on_recompute
@@ -104,7 +262,8 @@ class DailyScheduler:
                     next_run = self._next_run
                 wait_seconds = max((next_run - datetime.now()).total_seconds(), 0)
                 if wait_seconds > 0:
-                    if self._wake.wait(timeout=min(wait_seconds, 60)):
+                    # 每 30 秒轮询一次，保障巡检机制与唤醒信号及时响应
+                    if self._wake.wait(timeout=min(wait_seconds, 30)):
                         self._wake.clear()
                         continue
                 else:

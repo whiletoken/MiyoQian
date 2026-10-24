@@ -3,133 +3,158 @@
 // ===========================================================================
 
 function renderShopConfig() {
+  if (!$("shopEnable")) return;
   const shop = config.shop_exchange || {};
-  if ($("shopEnable")) {
-    $("shopEnable").checked = Boolean(shop.enable);
+  $("shopEnable").checked = Boolean(shop.enable ?? false);
+  $("shopRetrySeconds").value = shop.retry_seconds ?? 20;
+  $("shopRetryInterval").value = shop.retry_interval ?? 0.4;
+  if ($("shopGoodsMetric")) {
+    $("shopGoodsMetric").textContent = shopGoodsLoading
+      ? "加载中"
+      : `${shopGoods.length} 件`;
   }
-  if ($("shopRetrySeconds")) {
-    $("shopRetrySeconds").value = shop.retry_seconds ?? 20;
-  }
-  if ($("shopRetryInterval")) {
-    $("shopRetryInterval").value = shop.retry_interval ?? 0.4;
+  if ($("shopPlansMetric")) {
+    $("shopPlansMetric").textContent = String((shop.plans || []).length);
   }
   renderShopGameFilter();
-  if (shopGoodsLoading) {
-    renderShopGoodsLoadingState();
-  } else {
-    renderShopGoods();
-  }
+  renderShopGoods();
+  renderShopGoodsLoadingState();
   renderShopPlans();
 }
 
 function renderShopGameFilter() {
   const select = $("shopGameFilter");
   if (!select) return;
-  const current = shopSelectedGame;
   select.innerHTML = shopGames
     .map(
-      (item) =>
-        `<option value="${escapeAttr(item.key)}" ${item.key === current ? "selected" : ""}>${escapeHtml(item.name)}</option>`,
+      (game) =>
+        `<option value="${escapeAttr(game.key)}" ${game.key === shopSelectedGame ? "selected" : ""}>${escapeHtml(game.name)}</option>`,
     )
     .join("");
 }
 
 function getFilteredGoods() {
-  if (!shopFilterStatus) return shopGoods;
   if (shopFilterStatus === "sold_out") {
-    return shopGoods.filter((item) => isShopGoodSoldOut(item));
+    return shopGoods.filter((good) => isShopGoodSoldOut(good));
   }
   if (shopFilterStatus === "available") {
-    return shopGoods.filter((item) => canShopGoodExchangeNow(item));
+    return shopGoods.filter(
+      (good) => !isShopGoodSoldOut(good) && canShopGoodExchangeNow(good),
+    );
   }
   return shopGoods;
 }
 
 function renderShopGoodsLoadingState() {
-  const grid = $("shopGoods");
-  if (!grid) return;
-  grid.innerHTML = `
-    <div class="shop-empty-goods is-loading">
-      <div class="qr-loading"></div>
-      <p>正在获取商品列表…</p>
-    </div>
-  `;
+  const select = $("shopGameFilter");
+  const button = $("shopRefreshBtn");
+  if (select) select.disabled = shopGoodsLoading;
+  if (!button) return;
+  const label = button.querySelector("span");
+  button.disabled = shopGoodsLoading;
+  button.classList.toggle("is-loading", shopGoodsLoading);
+  if (label) label.textContent = shopGoodsLoading ? "加载中" : "刷新商品";
 }
 
 function renderShopGoods() {
-  const grid = $("shopGoods");
-  if (!grid) return;
-  const filtered = getFilteredGoods();
-  if (!filtered.length) {
-    const emptyHint = shopGoods.length
-      ? "当前筛选条件下没有商品"
-      : "暂无商品数据，可点击右上角刷新获取。";
-    grid.innerHTML = `<div class="empty-state">${emptyHint}</div>`;
+  const list = $("shopGoods");
+  if (!list) return;
+
+  if (shopGoodsLoading) {
+    list.innerHTML = `<div class="empty-state shop-empty shop-loading">
+        <span class="qr-loading" aria-hidden="true"></span>
+        <strong>商品加载中</strong>
+        <span>正在获取商品图片、兑换时间、库存和限购信息…</span>
+      </div>`;
     renderShopPagination();
     return;
   }
-  const totalPages = Math.ceil(filtered.length / SHOP_PAGE_SIZE);
-  if (shopCurrentPage > totalPages) {
-    shopCurrentPage = totalPages;
-  }
-  if (shopCurrentPage < 1) {
-    shopCurrentPage = 1;
-  }
+
+  const filtered = getFilteredGoods();
+  const total = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(total / SHOP_PAGE_SIZE));
+  if (shopCurrentPage > totalPages) shopCurrentPage = totalPages;
+
   const start = (shopCurrentPage - 1) * SHOP_PAGE_SIZE;
-  const pagedGoods = filtered.slice(start, start + SHOP_PAGE_SIZE);
-  grid.innerHTML = pagedGoods
-    .map((item) => shopGoodCard(item, shopGoods.indexOf(item)))
-    .join("");
+  const pageGoods = filtered.slice(start, start + SHOP_PAGE_SIZE);
+
+  if (pageGoods.length) {
+    list.innerHTML = pageGoods
+      .map((good) => shopGoodCard(good, shopGoods.indexOf(good)))
+      .join("");
+  } else {
+    list.innerHTML = `<div class="empty-state shop-empty">
+        <strong>暂无商品数据</strong>
+        <span>${shopFilterStatus ? "当前筛选条件下没有商品。" : "点击刷新商品后，会显示兑换时间、库存、价格和图片。"}</span>
+      </div>`;
+  }
+
   bindShopGoodsEvents();
   renderShopPagination();
 }
 
 function renderShopPagination() {
-  const container = $("shopPagination");
+  let container = $("shopPagination");
+  const list = $("shopGoods");
+
+  if (!container && list) {
+    container = document.createElement("div");
+    container.id = "shopPagination";
+    container.className = "shop-pagination";
+    list.parentNode.insertBefore(container, list.nextSibling);
+  }
+
   if (!container) return;
-  const filtered = getFilteredGoods();
-  const totalPages = Math.ceil(filtered.length / SHOP_PAGE_SIZE);
-  if (totalPages <= 1) {
+
+  const filteredCount = shopGoodsLoading ? 0 : getFilteredGoods().length;
+  if (filteredCount <= SHOP_PAGE_SIZE) {
     container.innerHTML = "";
     container.style.display = "none";
     return;
   }
-  container.style.display = "";
-  const pages = getVisiblePages(shopCurrentPage, totalPages);
-  let html = `<div class="shop-pagination-wrap">`;
-  html += `
-    <button class="ghost shop-page-btn" ${shopCurrentPage <= 1 ? "disabled" : ""} data-shop-page="${shopCurrentPage - 1}">
-      上一页
+  container.style.display = "flex";
+
+  const total = Math.max(1, Math.ceil(filteredCount / SHOP_PAGE_SIZE));
+  if (shopCurrentPage > total) shopCurrentPage = total;
+  const current = shopCurrentPage;
+
+  let html = `
+    <button class="ghost page-btn" data-page="prev" ${current <= 1 ? "disabled" : ""}>
+      <svg width="10" height="10" viewBox="0 0 10 10"><path d="M7 1L3 5l4 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
     </button>
   `;
+
+  const pages = getVisiblePages(current, total);
   for (const p of pages) {
     if (p === "...") {
-      html += `<span class="shop-page-ellipsis">…</span>`;
+      html += `<span class="page-ellipsis">…</span>`;
     } else {
-      const activeClass = p === shopCurrentPage ? "is-active" : "";
-      html += `
-        <button class="ghost shop-page-btn ${activeClass}" data-shop-page="${p}">
-          ${p}
-        </button>
-      `;
+      html += `<button class="ghost page-btn ${p === current ? "is-active" : ""}" data-page="${p}">${p}</button>`;
     }
   }
+
   html += `
-    <button class="ghost shop-page-btn" ${shopCurrentPage >= totalPages ? "disabled" : ""} data-shop-page="${shopCurrentPage + 1}">
-      下一页
+    <button class="ghost page-btn" data-page="next" ${current >= total ? "disabled" : ""}>
+      <svg width="10" height="10" viewBox="0 0 10 10"><path d="M3 1l4 4-4 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
     </button>
+    <span class="page-info">共 ${filteredCount} 件 · ${current}/${total} 页</span>
   `;
-  html += `</div>`;
+
   container.innerHTML = html;
-  container.querySelectorAll("[data-shop-page]").forEach((btn) => {
+
+  container.querySelectorAll("[data-page]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      const targetPage = Number(btn.dataset.shopPage);
-      if (targetPage >= 1 && targetPage <= totalPages && targetPage !== shopCurrentPage) {
-        shopCurrentPage = targetPage;
-        renderShopGoods();
-        const topEl = $("shopGameFilter") || $("shopGoods");
-        topEl?.scrollIntoView({ behavior: "smooth", block: "start" });
+      const page = btn.dataset.page;
+      if (page === "prev" && shopCurrentPage > 1) {
+        shopCurrentPage--;
+      } else if (page === "next" && shopCurrentPage < total) {
+        shopCurrentPage++;
+      } else if (Number(page)) {
+        shopCurrentPage = Number(page);
       }
+      renderShopGoods();
+      const topEl = $("shopGameFilter") || $("shopGoods");
+      topEl?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   });
 }
@@ -160,242 +185,244 @@ function getVisiblePages(current, total) {
 }
 
 function shopGoodCard(good, index) {
-  const isSoldOut = isShopGoodSoldOut(good);
-  const canPlan = canShopGoodAddPlan(good);
-  const canExchange = canShopGoodExchangeNow(good);
-  const isExchanging =
-    shopRequestInFlight && shopExchangeNowGoodsId === String(good.goods_id || "");
-  const statusBadge = isSoldOut
-    ? '<span class="shop-tag sold-out">已售罄</span>'
-    : '<span class="shop-tag ok">可兑换</span>';
+  const soldOut = isShopGoodSoldOut(good);
+  const canAddPlan = canShopGoodAddPlan(good);
+  const exchangeNow = canShopGoodExchangeNow(good);
+  const exchanging = shopExchangeNowGoodsId === String(good.goods_id || "");
+  const exchangeLabel =
+    good.display_status === "sold_out_with_next" ? "下次兑换" : "兑换";
+  const exchangeButtonText = exchanging
+    ? "兑换中…"
+    : soldOut
+      ? "已售罄"
+      : exchangeNow
+        ? "兑换"
+        : "即将开始";
+  const exchangeButtonTitle = exchanging
+    ? "正在发送兑换请求"
+    : soldOut
+      ? "商品已售罄"
+      : exchangeNow
+        ? "立即发送兑换请求"
+        : "商品还未开启兑换";
+  const image = good.icon
+    ? `<img src="${escapeAttr(good.icon)}" alt="${escapeAttr(good.goods_name)}" loading="lazy" />`
+    : `<div class="shop-image-fallback">无图</div>`;
   return `
-    <article class="shop-good-card ${isSoldOut ? "is-sold-out" : ""}" data-shop-good="${index}">
-      <div class="shop-good-cover-wrap">
-        <img class="shop-good-cover" src="${escapeAttr(good.icon || "")}" alt="${escapeAttr(good.goods_name || "商品")}" loading="lazy" />
-        <div class="shop-good-tags">
-          ${statusBadge}
-          ${good.game_name ? `<span class="shop-tag">${escapeHtml(good.game_name)}</span>` : ""}
+    <article class="shop-good ${soldOut ? "is-sold-out" : ""}" data-shop-good="${index}">
+      <div class="shop-good-image">${image}</div>
+      <div class="shop-good-main">
+        <div class="shop-good-title">
+          <strong>${escapeHtml(good.goods_name)}</strong>
+          ${soldOut ? "<span>已售罄</span>" : ""}
+        </div>
+        <div class="shop-good-meta">
+          <span>${exchangeLabel} ${escapeHtml(good.exchange_time || "-")}</span>
+          <span class="${soldOut ? "sold-out" : ""}">${soldOut ? "已售罄" : `库存 ${escapeHtml(good.stock || "-")}`}</span>
+          <span>${escapeHtml(String(good.price ?? 0))} 米游币</span>
+          <span>${escapeHtml(good.limit || "-")}</span>
         </div>
       </div>
-      <div class="shop-good-body">
-        <h3 class="shop-good-title" title="${escapeAttr(good.goods_name || "")}">${escapeHtml(good.goods_name || "未命名商品")}</h3>
-        <div class="shop-good-meta">
-          <strong>${escapeHtml(String(good.price ?? "-"))} <small>米游币</small></strong>
-          <span>库存 ${escapeHtml(String(good.stock ?? "-"))}</span>
-        </div>
-        <p class="shop-good-time">${escapeHtml(good.next_time_display || good.time_display || "")}</p>
-        <div class="shop-good-actions">
-          <button class="ghost icon-only" type="button" data-shop-plan-add="${index}" ${canPlan ? "" : "disabled"} title="${canPlan ? "加入兑换计划" : "商品已售罄"}">
-            <svg><use href="#i-plus"></use></svg>
-          </button>
-          <button class="primary" type="button" data-shop-exchange-now="${index}" ${canExchange && !isExchanging ? "" : "disabled"}>
-            <svg><use href="#i-play"></use></svg>
-            <span>${isExchanging ? "兑换中…" : "立即兑换"}</span>
-          </button>
-        </div>
+      <div class="shop-good-actions">
+        <button class="ghost" type="button" data-shop-add="${index}" title="${canAddPlan ? "加入兑换计划" : "商品已售罄"}" ${canAddPlan ? "" : "disabled"}>
+          <svg><use href="#i-plus"></use></svg>
+          <span>计划</span>
+        </button>
+        <button class="primary ${exchanging ? "is-loading" : ""}" type="button" data-shop-now="${index}" title="${exchangeButtonTitle}" ${exchangeNow && !exchanging ? "" : "disabled"}>
+          <svg><use href="#i-play"></use></svg>
+          <span>${exchangeButtonText}</span>
+        </button>
       </div>
     </article>
   `;
 }
 
 function renderShopPlans() {
-  const container = $("shopPlans");
-  if (!container) return;
+  const list = $("shopPlans");
+  if (!list) return;
+  document
+    .querySelectorAll("details.shop-plan[open]")
+    .forEach((plan) => shopOpenPlans.add(plan.dataset.shopPlan));
   const plans = config.shop_exchange?.plans || [];
-  if (!plans.length) {
-    container.innerHTML = `<div class="empty-state">暂无兑换计划，可从左侧商品卡片点击加号添加。</div>`;
-    return;
-  }
-  container.innerHTML = plans
-    .map((plan, index) => shopPlanRow(plan, index))
-    .join("");
+  list.innerHTML = plans.length
+    ? plans.map((plan, index) => shopPlanRow(plan, index)).join("")
+    : `<div class="empty-state">
+        <strong>暂无兑换计划</strong>
+        <span>从商品列表加入计划后，可设置账号、时间和可选的收货地址或游戏角色。</span>
+      </div>`;
   bindShopPlanEvents();
 }
 
 function shopPlanAccountIndex(plan, accounts) {
   const stuid = String(plan.account_stuid || "").trim();
-  if (!stuid) return Number(plan.account_index ?? -1);
+  if (!stuid) return Number(plan.account_index ?? 0);
   return (accounts || []).findIndex(
     (account) => String(account.stuid || "").trim() === stuid,
   );
 }
 
 function shopPlanRow(plan, index) {
-  const isOpen = shopOpenPlans.has(index);
   const accounts = config.accounts || [];
-  const resolvedAccountIndex = shopPlanAccountIndex(plan, accounts);
-  const accountOptions = accounts.length
-    ? accounts
-        .map((account, accIndex) => {
-          const selected = accIndex === resolvedAccountIndex ? "selected" : "";
-          const stuid = String(account.stuid || "").trim();
-          return `<option value="${accIndex}" data-stuid="${escapeAttr(stuid)}" ${selected}>${escapeHtml(accountLabel(account))}</option>`;
-        })
-        .join("")
-    : `<option value="">暂无可用账号</option>`;
-  const accountSelectOptions =
-    resolvedAccountIndex < 0 && plan.account_stuid
-      ? `<option value="" data-stuid="${escapeAttr(plan.account_stuid)}" selected>账号已删除（UID ${escapeHtml(plan.account_stuid)}）</option>${accountOptions}`
-      : accountOptions;
-  const isVirtual = Number(plan.type || 0) === 2;
+  const paused = plan.enable === false;
+  const running = Boolean(shopRunningProgress[String(index)]);
+  const open = shopOpenPlans.has(String(index)) ? "open" : "";
+  const roleDisplay = shopRoleDisplay(plan);
+  const serverDisplay = shopServerDisplay(plan);
+  const selectedAccount = shopPlanAccountIndex(plan, accounts);
+  const missingOption =
+    selectedAccount < 0 && plan.account_stuid
+      ? `<option value="" data-stuid="${escapeAttr(plan.account_stuid)}" selected>账号已删除（UID ${escapeHtml(plan.account_stuid)}）</option>`
+      : "";
+  const accountOptions =
+    accounts.length || missingOption
+      ? missingOption +
+        accounts
+          .map((account, accountIndex) => {
+            const selected = accountIndex === selectedAccount ? "selected" : "";
+            const stuid = String(account.stuid || "").trim();
+            return `<option value="${accountIndex}" data-stuid="${escapeAttr(stuid)}" ${selected}>${escapeHtml(accountLabel(account))}</option>`;
+          })
+          .join("")
+      : `<option value="0">暂无账号</option>`;
   return `
-    <article class="shop-plan-card" data-shop-plan="${index}">
-      <div class="shop-plan-head">
-        <div class="shop-plan-main">
-          <label class="check-row compact">
+    <details class="shop-plan ${paused ? "is-paused" : ""}" data-shop-plan="${index}" ${open}>
+      <summary class="shop-plan-summary">
+        <span class="shop-plan-title">
+          <strong>${escapeHtml(plan.goods_name || plan.goods_id)}</strong>
+          <small>${escapeHtml(shopPlanStatus(plan, index))}</small>
+        </span>
+        <span class="shop-plan-badges">
+          <span class="plan-badge ${running ? "running" : paused ? "paused" : "active"}">${running ? "兑换中" : paused ? "已暂停" : "自动"}</span>
+          <span class="disclosure" aria-hidden="true"></span>
+        </span>
+      </summary>
+      <div class="shop-plan-body">
+        <div class="shop-plan-head">
+          <label class="check-row">
             <input data-shop-plan-field="enable" type="checkbox" ${plan.enable !== false ? "checked" : ""} data-autosave />
-            <strong>${escapeHtml(plan.goods_name || plan.goods_id || `计划 ${index + 1}`)}</strong>
+            <span>启用该计划</span>
           </label>
-          <p class="shop-plan-subtitle">${shopPlanStatus(plan, index)}</p>
-        </div>
-        <div class="shop-plan-actions">
-          <button class="ghost icon-only" type="button" data-shop-plan-run="${index}" title="立即执行一次兑换">
-            <svg><use href="#i-play"></use></svg>
-          </button>
-          <button class="ghost icon-only" type="button" data-shop-plan-toggle="${index}" title="${isOpen ? "收起设置" : "展开设置"}">
-            <svg><use href="${isOpen ? "#i-x" : "#i-edit"}"></use></svg>
-          </button>
-          <button class="ghost icon-only" type="button" data-shop-plan-remove="${index}" title="删除计划">
+          <button class="ghost icon-only" type="button" data-shop-remove="${index}" title="删除计划">
             <svg><use href="#i-trash"></use></svg>
           </button>
         </div>
-      </div>
-      <div class="shop-plan-drawer ${isOpen ? "open" : ""}">
         <div class="form-grid two compact">
           <label>
             <span>执行账号</span>
             <div class="select-wrapper">
-              <select data-shop-plan-field="account_index" data-autosave>
-                ${accountSelectOptions}
-              </select>
-              <svg class="select-arrow" width="12" height="8" aria-hidden="true">
-                <use href="#arrow-down"/>
-              </svg>
+               <select data-shop-plan-field="account_index" data-autosave>${accountOptions}</select>
+               <svg class="select-arrow" width="12" height="8" aria-hidden="true">
+                   <use href="#arrow-down"/>
+               </svg>
             </div>
           </label>
           <label>
-            <span>定时兑换时间</span>
-            <input data-shop-plan-field="exchange_at" type="datetime-local" step="1" value="${escapeAttr(timestampToLocalInput(plan.exchange_at))}" data-autosave />
+            <span>兑换时间</span>
+            <input data-shop-plan-field="exchange_at" type="datetime-local" value="${escapeAttr(timestampToLocalInput(plan.exchange_at))}" data-autosave />
           </label>
+          ${Number(plan.type || 0) !== 2 ? `
+          <label>
+            <span>收货地址</span>
+            <div class="select-wrapper">
+              <select data-shop-plan-field="address_id" data-autosave data-address-select>
+                  ${shopPlanAddressSelectHtml(plan)}
+              </select>
+               <svg class="select-arrow" width="12" height="8" aria-hidden="true">
+                   <use href="#arrow-down"/>
+               </svg>
+            </div>
+          </label>` : ""}
+          <div class="readonly-field">
+            <span>游戏角色</span>
+            <strong>${escapeHtml(roleDisplay)}</strong>
+          </div>
+          <div class="readonly-field">
+            <span>服务器</span>
+            <strong>${escapeHtml(serverDisplay)}</strong>
+          </div>
         </div>
-        <div class="form-grid two compact">
-          <label class="check-row">
-            <input data-shop-plan-field="auto" type="checkbox" ${plan.auto !== false ? "checked" : ""} data-autosave />
-            <span>到点自动兑换</span>
-          </label>
+        <input data-shop-plan-field="auto" type="hidden" value="${plan.auto === false ? "false" : "true"}" />
+        <input data-shop-plan-field="goods_id" type="hidden" value="${escapeAttr(plan.goods_id || "")}" />
+        <input data-shop-plan-field="goods_name" type="hidden" value="${escapeAttr(plan.goods_name || "")}" />
+        <input data-shop-plan-field="icon" type="hidden" value="${escapeAttr(plan.icon || "")}" />
+        <input data-shop-plan-field="price" type="hidden" value="${escapeAttr(plan.price ?? 0)}" />
+        <input data-shop-plan-field="stock" type="hidden" value="${escapeAttr(plan.stock || "")}" />
+        <input data-shop-plan-field="type" type="hidden" value="${escapeAttr(plan.type ?? 0)}" />
+        <input data-shop-plan-field="game" type="hidden" value="${escapeAttr(plan.game || "")}" />
+        <input data-shop-plan-field="device_fp" type="hidden" value="${escapeAttr(plan.device_fp || "")}" />
+        <input data-shop-plan-field="uid" type="hidden" value="${escapeAttr(plan.uid || "")}" />
+        <input data-shop-plan-field="region" type="hidden" value="${escapeAttr(plan.region || "")}" />
+        <input data-shop-plan-field="game_biz" type="hidden" value="${escapeAttr(plan.game_biz || "")}" />
+        <input data-shop-plan-field="role_name" type="hidden" value="${escapeAttr(plan.role_name || "")}" />
+        <input data-shop-plan-field="region_name" type="hidden" value="${escapeAttr(plan.region_name || "")}" />
+        <input data-shop-plan-field="last_result" type="hidden" value="${escapeAttr(plan.last_result || "")}" />
+        <input data-shop-plan-field="last_attempt_key" type="hidden" value="${escapeAttr(plan.last_attempt_key || "")}" />
+        <input data-shop-plan-field="last_run" type="hidden" value="${escapeAttr(plan.last_run || "")}" />
+        <div class="shop-plan-foot">
+          <span>${escapeHtml(shopPlanStatus(plan, index))}</span>
+          <button class="ghost" type="button" data-shop-plan-now="${index}" title="立即执行该兑换计划">
+            <svg><use href="#i-play"></use></svg>
+            <span>立即兑换</span>
+          </button>
         </div>
-        ${
-          isVirtual
-            ? `
-              <div class="shop-plan-meta-box">
-                <div class="shop-plan-meta-text">
-                  <div><strong>游戏角色：</strong><span>${escapeHtml(shopRoleDisplay(plan))}</span></div>
-                  <div><strong>区服信息：</strong><span>${escapeHtml(shopServerDisplay(plan))}</span></div>
-                </div>
-                <button class="ghost icon-only" type="button" data-shop-plan-refresh-role="${index}" title="刷新角色信息">
-                  <svg><use href="#i-refresh"></use></svg>
-                </button>
-              </div>
-            `
-            : `
-              <label class="compact">
-                <span>收货地址</span>
-                <div class="shop-plan-address-row">
-                  <div class="select-wrapper" style="flex: 1;">
-                    <select data-shop-plan-field="address_id" data-address-select data-autosave>
-                      ${shopPlanAddressSelectHtml(plan)}
-                    </select>
-                    <svg class="select-arrow" width="12" height="8" aria-hidden="true">
-                      <use href="#arrow-down"/>
-                    </svg>
-                  </div>
-                  <button class="ghost icon-only" type="button" data-shop-plan-refresh-address="${index}" title="刷新收货地址">
-                    <svg><use href="#i-refresh"></use></svg>
-                  </button>
-                </div>
-              </label>
-            `
-        }
       </div>
-      <input data-shop-plan-field="goods_id" type="hidden" value="${escapeAttr(plan.goods_id || "")}" />
-      <input data-shop-plan-field="goods_name" type="hidden" value="${escapeAttr(plan.goods_name || "")}" />
-      <input data-shop-plan-field="icon" type="hidden" value="${escapeAttr(plan.icon || "")}" />
-      <input data-shop-plan-field="price" type="hidden" value="${escapeAttr(plan.price ?? "")}" />
-      <input data-shop-plan-field="stock" type="hidden" value="${escapeAttr(plan.stock ?? "")}" />
-      <input data-shop-plan-field="type" type="hidden" value="${escapeAttr(plan.type ?? "")}" />
-      <input data-shop-plan-field="game" type="hidden" value="${escapeAttr(plan.game || "")}" />
-      <input data-shop-plan-field="game_biz" type="hidden" value="${escapeAttr(plan.game_biz || "")}" />
-      <input data-shop-plan-field="device_fp" type="hidden" value="${escapeAttr(plan.device_fp || "")}" />
-      <input data-shop-plan-field="uid" type="hidden" value="${escapeAttr(plan.uid || "")}" />
-      <input data-shop-plan-field="region" type="hidden" value="${escapeAttr(plan.region || "")}" />
-      <input data-shop-plan-field="role_name" type="hidden" value="${escapeAttr(plan.role_name || "")}" />
-      <input data-shop-plan-field="region_name" type="hidden" value="${escapeAttr(plan.region_name || "")}" />
-      <input data-shop-plan-field="last_result" type="hidden" value="${escapeAttr(plan.last_result || "")}" />
-      <input data-shop-plan-field="last_attempt_key" type="hidden" value="${escapeAttr(plan.last_attempt_key || "")}" />
-      <input data-shop-plan-field="last_run" type="hidden" value="${escapeAttr(plan.last_run || "")}" />
-    </article>
+    </details>
   `;
 }
 
 function bindShopGoodsEvents() {
-  document.querySelectorAll("[data-shop-plan-add]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const good = getFilteredGoods()[Number(button.dataset.shopPlanAdd)];
-      addShopPlan(good).catch((error) => showToast(error.message));
-    });
+  document.querySelectorAll("[data-shop-add]").forEach((button) => {
+    button.addEventListener("click", () =>
+      withButtonLoading(button, "添加中…", () =>
+        addShopPlan(shopGoods[Number(button.dataset.shopAdd)]),
+      ),
+    );
   });
-  document.querySelectorAll("[data-shop-exchange-now]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const good = getFilteredGoods()[Number(button.dataset.shopExchangeNow)];
-      exchangeGoodNow(good).catch((error) => showToast(error.message));
-    });
+  document.querySelectorAll("[data-shop-now]").forEach((button) => {
+    button.addEventListener("click", () =>
+      exchangeGoodNow(shopGoods[Number(button.dataset.shopNow)]).catch(
+        (error) => showToast(error.message),
+      ),
+    );
   });
 }
 
 function bindShopPlanEvents() {
-  document.querySelectorAll("[data-shop-plan-toggle]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const index = Number(button.dataset.shopPlanToggle);
-      if (shopOpenPlans.has(index)) {
-        shopOpenPlans.delete(index);
-      } else {
-        shopOpenPlans.add(index);
-      }
-      renderShopPlans();
+  document.querySelectorAll("details.shop-plan").forEach((details) => {
+    details.addEventListener("toggle", () => {
+      if (details.open) shopOpenPlans.add(details.dataset.shopPlan);
+      else shopOpenPlans.delete(details.dataset.shopPlan);
     });
   });
-  document.querySelectorAll("[data-shop-plan-remove]").forEach((button) => {
+  document.querySelectorAll("[data-shop-remove]").forEach((button) => {
     button.addEventListener("click", () => {
       collectConfig();
-      const index = Number(button.dataset.shopPlanRemove);
-      config.shop_exchange.plans.splice(index, 1);
-      shopOpenPlans.delete(index);
+      config.shop_exchange.plans.splice(Number(button.dataset.shopRemove), 1);
       renderShopPlans();
-      saveConfig("兑换计划已删除").catch((error) => showToast(error.message));
+      autoSaveConfig()
+        .then(() => showToast("兑换计划已删除"))
+        .catch((error) => showToast(error.message));
     });
   });
-  document.querySelectorAll("[data-shop-plan-run]").forEach((button) => {
+  document.querySelectorAll("[data-shop-plan-now]").forEach((button) => {
     button.addEventListener("click", () => {
-      const index = Number(button.dataset.shopPlanRun);
-      executePlanOnce(index, button).catch((error) => showToast(error.message));
+      collectConfig();
+      withButtonLoading(button, "兑换中…", () =>
+        exchangePlanNow(Number(button.dataset.shopPlanNow)),
+      );
     });
   });
   document
-    .querySelectorAll("[data-shop-plan-refresh-role]")
-    .forEach((button) => {
-      button.addEventListener("click", () => {
-        const index = Number(button.dataset.shopPlanRefreshRole);
-        refreshShopPlanRole(index).catch((error) => showToast(error.message));
-      });
-    });
-  document
-    .querySelectorAll("[data-shop-plan-refresh-address]")
-    .forEach((button) => {
-      button.addEventListener("click", () => {
-        const index = Number(button.dataset.shopPlanRefreshAddress);
-        refreshShopPlanAddresses(index, false).catch((error) =>
-          showToast(error.message),
-        );
+    .querySelectorAll('[data-shop-plan-field="account_index"]')
+    .forEach((select) => {
+      select.addEventListener("change", () => {
+        const row = select.closest("[data-shop-plan]");
+        const index = Number(row?.dataset.shopPlan);
+        collectConfig();
+        refreshShopPlanRole(index)
+          .catch((error) => showToast(error.message))
+          .then(() => refreshShopPlanAddresses(index))
+          .catch((error) => showToast(error.message));
       });
     });
 }
@@ -414,7 +441,6 @@ function collectShopExchange() {
   };
   const planRows = document.querySelectorAll("[data-shop-plan]");
   if (planRows.length === 0 && Array.isArray(existing.plans) && existing.plans.length > 0) {
-    // 保护机制：DOM 未渲染兑换计划节点时，保留内存中现有的计划，防止计划被置空
     shop.plans = existing.plans.map(p => ({ ...p }));
     return shop;
   }
@@ -567,12 +593,6 @@ async function exchangePlanNow(planOrIndex) {
   }
   showToast(`兑换请求完成：${result.message || "未知结果"}`);
   await refreshStatus();
-}
-
-async function executePlanOnce(planIndex, button) {
-  await withButtonLoading(button, "兑换中…", async () => {
-    await exchangePlanNow(planIndex);
-  });
 }
 
 async function buildShopPlan(good, accountIndex) {
@@ -906,35 +926,6 @@ async function checkShopAccountLogin(accountIndex) {
       return error.message;
     }
     return null;
-  }
-}
-
-async function withButtonLoading(button, loadingText, task) {
-  if (!button) {
-    shopRequestInFlight = true;
-    try {
-      await task();
-    } finally {
-      shopRequestInFlight = false;
-    }
-    return;
-  }
-  if (button.disabled) return;
-  const label = button.querySelector("span");
-  const originalText = label?.textContent || "";
-  shopRequestInFlight = true;
-  button.disabled = true;
-  button.classList.add("is-loading");
-  if (label) label.textContent = loadingText;
-  try {
-    await task();
-  } catch (error) {
-    showToast(error.message);
-  } finally {
-    button.classList.remove("is-loading");
-    button.disabled = false;
-    if (label) label.textContent = originalText;
-    shopRequestInFlight = false;
   }
 }
 

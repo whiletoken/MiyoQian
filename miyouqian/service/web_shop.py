@@ -95,7 +95,6 @@ class WebShopMixin:
                 except Exception as exc:
                     result["roles_error"] = str(exc)
                     self.log(f"游戏角色获取失败: {account_name}，{game_biz}，{exc}", "exchange")
-                    raise
             self.log(
                 f"兑换账号信息获取完成: {account_name}，地址 {len(result.get('addresses') or [])} 个，角色 {len(result.get('roles') or [])} 个",
                 "exchange",

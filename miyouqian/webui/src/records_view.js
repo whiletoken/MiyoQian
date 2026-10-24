@@ -1,5 +1,5 @@
 // ===========================================================================
-// 任务执行记录与日志展示
+// 任务执行记录与数据统计展示
 // ===========================================================================
 
 async function loadRecords() {
@@ -43,67 +43,89 @@ function getRecordStatusBadge(status) {
 function getTriggerBadge(trigger) {
   switch (trigger) {
     case "startup":
-      return '<span class="record-trigger-badge">启动触发</span>';
+      return '<span class="record-badge trigger">启动触发</span>';
     case "scheduled":
-      return '<span class="record-trigger-badge">定时触发</span>';
+      return '<span class="record-badge trigger">定时触发</span>';
+    case "patrol":
+    case "retry":
+      return '<span class="record-badge trigger">巡检重试</span>';
     case "manual":
-      return '<span class="record-trigger-badge">手动触发</span>';
+      return '<span class="record-badge trigger">手动触发</span>';
     case "exchange_scheduler":
-      return '<span class="record-trigger-badge">定时兑换</span>';
+    case "exchange_plan":
+      return '<span class="record-badge trigger">定时兑换</span>';
     case "exchange_manual":
-      return '<span class="record-trigger-badge">手动兑换</span>';
+    case "exchange":
+      return '<span class="record-badge trigger">商品兑换</span>';
+    case "cli":
+      return '<span class="record-badge trigger">命令行</span>';
     default:
-      return trigger ? `<span class="record-trigger-badge">${escapeHtml(trigger)}</span>` : "";
+      return `<span class="record-badge trigger">${escapeHtml(trigger || "触发")}</span>`;
   }
 }
 
 function renderRecords(records) {
   const container = $("recordsList");
+  const emptyBox = $("recordsEmpty");
   if (!container) return;
-  if (!records || !records.length) {
-    container.innerHTML = `
-      <div class="empty-state">
-        <strong>暂无执行记录</strong>
-        <span>任务执行完成后，详细的执行阶段与结果汇总将展示在这里。</span>
-      </div>
-    `;
+
+  const total = records.length;
+  if ($("recordsTotalMetric")) $("recordsTotalMetric").textContent = String(total);
+  if (total > 0) {
+    const latest = records[0];
+    if ($("recordsLatestStatusMetric")) $("recordsLatestStatusMetric").innerHTML = getRecordStatusBadge(latest.status);
+    if ($("recordsLatestTimeMetric")) $("recordsLatestTimeMetric").textContent = formatTime(latest.timestamp).slice(5);
+    const succCount = records.filter((r) => r.status === "success").length;
+    const rate = Math.round((succCount / total) * 100);
+    if ($("recordsSuccessRateMetric")) $("recordsSuccessRateMetric").textContent = `${rate}%`;
+  } else {
+    if ($("recordsLatestStatusMetric")) $("recordsLatestStatusMetric").textContent = "-";
+    if ($("recordsLatestTimeMetric")) $("recordsLatestTimeMetric").textContent = "-";
+    if ($("recordsSuccessRateMetric")) $("recordsSuccessRateMetric").textContent = "-";
+  }
+
+  if (total === 0) {
+    container.innerHTML = "";
+    emptyBox?.classList.remove("is-hidden");
     return;
   }
-  container.innerHTML = records
-    .map((record) => {
-      const isExchange = record.task_type === "shop_exchange";
-      const totalAccounts = record.accounts?.length || 0;
-      let summaryText = "";
-      if (isExchange) {
-        summaryText = `兑换商品: ${escapeHtml(record.goods_name || "-")} · 账号: ${escapeHtml(record.account_name || "-")}`;
-      } else {
-        summaryText = `执行账号: ${totalAccounts} 个 · 耗时: ${record.duration ? record.duration.toFixed(1) + "s" : "-"}`;
-      }
+  emptyBox?.classList.add("is-hidden");
 
-      const accountsHtml = (record.accounts || [])
+  container.innerHTML = records
+    .map((record, index) => {
+      const accounts = record.accounts || [];
+      const messages = record.messages || [];
+
+      const accountsHtml = accounts
         .map((acc) => {
-          const accBadge = getRecordStatusBadge(acc.status);
           const stagesHtml = (acc.stages || [])
             .map((st) => {
               const succItems = (st.success_items || [])
-                .map((it) => `<span class="stage-item success">${escapeHtml(it)}</span>`)
+                .map((item) => `<span class="record-item-pill ok">${escapeHtml(item)}</span>`)
                 .join("");
               const failItems = (st.failed_items || [])
-                .map((it) => `<span class="stage-item failed">${escapeHtml(it)}</span>`)
+                .map((item) => `<span class="record-item-pill err">${escapeHtml(item)}</span>`)
                 .join("");
               const skipItems = (st.skipped_items || [])
-                .map((it) => `<span class="stage-item skipped">${escapeHtml(it)}</span>`)
+                .map((item) => `<span class="record-item-pill skip">${escapeHtml(item)}</span>`)
                 .join("");
-              const itemsList = [succItems, failItems, skipItems].filter(Boolean).join("");
-              const stageStatusClass = st.status === "failed" ? "failed" : (st.status === "skipped" ? "skipped" : "success");
               return `
                 <div class="record-stage-row">
-                  <div class="record-stage-title">
-                    <span class="record-stage-dot ${stageStatusClass}"></span>
-                    <strong>${escapeHtml(st.stage_name)}</strong>
-                    ${st.message ? `<small>${escapeHtml(st.message)}</small>` : ""}
+                  <div class="record-stage-name">
+                    <span>${escapeHtml(st.stage || st.stage_name || "阶段任务")}</span>
+                    ${getRecordStatusBadge(st.status)}
                   </div>
-                  ${itemsList ? `<div class="record-stage-items">${itemsList}</div>` : ""}
+                  ${
+                    succItems || failItems || skipItems
+                      ? `
+                    <div class="record-items-group">
+                      ${succItems}
+                      ${failItems}
+                      ${skipItems}
+                    </div>
+                  `
+                      : ""
+                  }
                 </div>
               `;
             })
@@ -112,54 +134,49 @@ function renderRecords(records) {
           return `
             <div class="record-account-card">
               <div class="record-account-header">
-                <div>
-                  <strong>${escapeHtml(acc.name || "未命名账号")}</strong>
-                  <small>${acc.stuid ? `UID ${escapeHtml(acc.stuid)}` : ""}</small>
-                </div>
-                ${accBadge}
+                <span class="record-account-title">${escapeHtml(acc.name || "未命名账号")} ${acc.stuid ? `<small>(${escapeHtml(acc.stuid)})</small>` : ""}</span>
+                ${getRecordStatusBadge(acc.status)}
               </div>
-              <div class="record-stages-list">
-                ${stagesHtml}
+              <div class="record-stage-list">
+                ${stagesHtml || '<span class="record-duration">暂无阶段详情</span>'}
               </div>
             </div>
           `;
         })
         .join("");
 
+      const logsHtml =
+        messages.length > 0
+          ? `
+        <div>
+          <button class="record-logs-toggle" type="button" onclick="this.nextElementSibling.classList.toggle('is-hidden')">查看完整执行日志 (${messages.length} 行)</button>
+          <pre class="record-logs-pre is-hidden">${escapeHtml(messages.join("\n"))}</pre>
+        </div>
+      `
+          : "";
+
       return `
-        <article class="record-card">
-          <div class="record-card-head">
-            <div class="record-meta-main">
-              <div class="record-meta-row">
-                <span class="record-time">${escapeHtml(formatTime(record.timestamp))}</span>
-                ${getRecordStatusBadge(record.status)}
-                ${getTriggerBadge(record.trigger)}
-              </div>
-              <p class="record-summary-line">${summaryText}</p>
-              ${record.error ? `<p class="record-error-line">${escapeHtml(record.error)}</p>` : ""}
+        <article class="record-card ${index === 0 ? "is-open" : ""}" data-record-id="${escapeHtml(record.id || "")}">
+          <div class="record-head" onclick="this.parentElement.classList.toggle('is-open')">
+            <div class="record-meta">
+              ${getRecordStatusBadge(record.status)}
+              ${getTriggerBadge(record.trigger)}
+              <span class="record-time">${escapeHtml(record.timestamp || "-")}</span>
+              <span class="record-duration">耗时 ${escapeHtml(String(record.duration_seconds ?? 0))}s</span>
             </div>
-            <button class="ghost icon-only record-collapse-btn" type="button" title="展开/收起详情">
-              <svg><use href="#arrow-down"></use></svg>
-            </button>
+            <div class="record-summary-line">
+              <span>${escapeHtml(record.summary_text || "")}</span>
+              <span class="record-arrow">▼</span>
+            </div>
           </div>
-          <div class="record-card-body is-hidden">
-            ${accountsHtml}
+          <div class="record-body">
+            ${accountsHtml || `<p class="record-duration">${escapeHtml(record.summary_text || "无账号详情")}</p>`}
+            ${logsHtml}
           </div>
         </article>
       `;
     })
     .join("");
-
-  container.querySelectorAll(".record-card-head").forEach((head) => {
-    head.addEventListener("click", () => {
-      const body = head.parentElement.querySelector(".record-card-body");
-      const btn = head.querySelector(".record-collapse-btn");
-      if (body) {
-        body.classList.toggle("is-hidden");
-        btn?.classList.toggle("is-expanded");
-      }
-    });
-  });
 }
 
 function latestResultText(scheduler, login, logs) {

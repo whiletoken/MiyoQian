@@ -120,3 +120,32 @@ function scrollLogsToBottom() {
 function isScrolledNearBottom(element) {
   return element.scrollHeight - element.scrollTop - element.clientHeight <= 24;
 }
+
+async function withButtonLoading(button, loadingText, task) {
+  if (!button) {
+    shopRequestInFlight = true;
+    try {
+      await task();
+    } finally {
+      shopRequestInFlight = false;
+    }
+    return;
+  }
+  if (button.disabled) return;
+  const label = button.querySelector("span");
+  const originalText = label?.textContent || "";
+  shopRequestInFlight = true;
+  button.disabled = true;
+  button.classList.add("is-loading");
+  if (label) label.textContent = loadingText;
+  try {
+    await task();
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    button.disabled = false;
+    button.classList.remove("is-loading");
+    if (label) label.textContent = originalText;
+    shopRequestInFlight = false;
+  }
+}

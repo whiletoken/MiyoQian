@@ -63,7 +63,10 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(self.app.status())
                 return
             if path == "/api/records":
-                limit_val = int(first_query(query, "limit", "50") or 50)
+                try:
+                    limit_val = int(first_query(query, "limit", "50") or 50)
+                except (ValueError, TypeError):
+                    limit_val = 50
                 records = self.app.get_records(limit_val)
                 self.send_json({"records": records, "total": len(records)})
                 return
@@ -74,7 +77,10 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(self.app.shop_good_detail(str(first_query(query, "goods_id"))))
                 return
             if path == "/api/shop/account-meta":
-                account_index = int(first_query(query, "account_index", "0") or 0)
+                try:
+                    account_index = int(first_query(query, "account_index", "0") or 0)
+                except (ValueError, TypeError):
+                    account_index = 0
                 game_biz = str(first_query(query, "game_biz", ""))
                 self.send_json(self.app.shop_account_meta(account_index, game_biz))
                 return

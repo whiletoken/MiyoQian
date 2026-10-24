@@ -71,7 +71,12 @@ class WebApp(WebLoginMixin, WebShopMixin):
         self._qr_refresh = threading.Event()
         self._login_cancel = threading.Event()
         self._login_generation = 0
-        self.scheduler = DailyScheduler(self.config, self.run_all, lambda message: self.log(message, "scheduler"))
+        self.scheduler = DailyScheduler(
+            self.config,
+            self.run_all,
+            lambda message: self.log(message, "scheduler"),
+            get_records_fn=lambda: self.records_repo.load(),
+        )
         self.exchange_scheduler = ExchangeScheduler(
             self.config,
             self.run_shop_exchange_plan,

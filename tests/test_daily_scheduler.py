@@ -118,6 +118,102 @@ class DailySchedulerTest(unittest.TestCase):
             scheduler.stop()
 
 
+    def test_patrol_before_scheduled_time_does_not_retry(self) -> None:
+        run_called = []
+        cfg = {"enable": True, "schedule": {"enable": True, "time": "23:59"}}
+        records = []
+        scheduler = DailyScheduler(cfg, lambda trigger="patrol": run_called.append(trigger), self.log, lambda: records)
+        retried = scheduler._inspect_and_retry(cfg["schedule"])
+        self.assertFalse(retried)
+        self.assertEqual(len(run_called), 0)
+
+    def test_patrol_already_signed_in_does_not_retry(self) -> None:
+        run_called = []
+        today_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cfg = {"enable": True, "schedule": {"enable": True, "time": "00:01"}}
+        records = [{"id": "rec1", "timestamp": today_str, "status": "success", "trigger": "scheduled"}]
+        scheduler = DailyScheduler(cfg, lambda trigger="patrol": run_called.append(trigger), self.log, lambda: records)
+        retried = scheduler._inspect_and_retry(cfg["schedule"])
+        self.assertFalse(retried)
+        self.assertEqual(len(run_called), 0)
+
+    def test_patrol_retries_up_to_three_times_and_stops(self) -> None:
+        run_called = []
+        cfg = {"enable": True, "schedule": {"enable": True, "time": "00:01"}}
+        records: list[dict] = []
+        scheduler = DailyScheduler(cfg, lambda trigger="patrol": run_called.append(trigger), self.log, lambda: records)
+        scheduler._retry_cooldown_seconds = 0  # 测试时不等待冷却时间
+
+        # 尝试 1
+        retried1 = scheduler._inspect_and_retry(cfg["schedule"])
+        self.assertTrue(retried1)
+        self.assertEqual(len(run_called), 1)
+        records.append({
+            "id": "rec1",
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "status": "failed",
+            "trigger": "patrol",
+        })
+
+        # 尝试 2
+        retried2 = scheduler._inspect_and_retry(cfg["schedule"])
+        self.assertTrue(retried2)
+        self.assertEqual(len(run_called), 2)
+        records.append({
+            "id": "rec2",
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "status": "failed",
+            "trigger": "patrol",
+        })
+
+        # 尝试 3
+        retried3 = scheduler._inspect_and_retry(cfg["schedule"])
+        self.assertTrue(retried3)
+        self.assertEqual(len(run_called), 3)
+        records.append({
+            "id": "rec3",
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "status": "failed",
+            "trigger": "patrol",
+        })
+
+        # 第 4 次：已达 3 次上限，认定失败，不再尝试
+        retried4 = scheduler._inspect_and_retry(cfg["schedule"])
+        self.assertFalse(retried4)
+        self.assertEqual(len(run_called), 3)
+        self.assertTrue(any("认定今日签到失败，当日不再尝试" in line for line in self.logs))
+
+    def test_patrol_stops_when_retry_succeeds(self) -> None:
+        run_called = []
+        cfg = {"enable": True, "schedule": {"enable": True, "time": "00:01"}}
+        records: list[dict] = []
+        scheduler = DailyScheduler(cfg, lambda trigger="patrol": run_called.append(trigger), self.log, lambda: records)
+        scheduler._retry_cooldown_seconds = 0
+
+        # 第 1 次尝试失败
+        scheduler._inspect_and_retry(cfg["schedule"])
+        records.append({
+            "id": "rec1",
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "status": "failed",
+            "trigger": "patrol",
+        })
+
+        # 第 2 次尝试成功
+        scheduler._inspect_and_retry(cfg["schedule"])
+        records.append({
+            "id": "rec2",
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "status": "success",
+            "trigger": "patrol",
+        })
+
+        # 后续巡检应识别为已成功签到，不再重试
+        retried = scheduler._inspect_and_retry(cfg["schedule"])
+        self.assertFalse(retried)
+        self.assertEqual(len(run_called), 2)
+
+
 class WebAppLogAndConfigReloadTest(unittest.TestCase):
     def setUp(self) -> None:
         self.temp_dir = tempfile.TemporaryDirectory()
