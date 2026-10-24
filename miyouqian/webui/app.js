@@ -221,18 +221,9 @@ function getVisiblePages(current, total) {
 }
 
 function updateLogs(logs) {
-  allLogs = logs || [];
+  // 倒序排列：第 0 项为最新产生的日志，第 1 页展示最新内容
+  allLogs = (logs || []).slice().reverse();
   renderLogsView();
-  if ($("logsTotalMetric")) {
-    $("logsTotalMetric").textContent = `${allLogs.length} 行`;
-  }
-  if ($("logsLatestTimeMetric") && allLogs.length > 0) {
-    const lastLine = allLogs[allLogs.length - 1];
-    const match = lastLine.match(/^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/);
-    if (match) {
-      $("logsLatestTimeMetric").textContent = match[1].slice(5);
-    }
-  }
 }
 
 function renderLogsView() {
@@ -241,7 +232,7 @@ function renderLogsView() {
   const totalLines = allLogs.length;
   const totalPages = Math.max(1, Math.ceil(totalLines / logsPageSize));
 
-  if (logsAutoFollow || logsCurrentPage > totalPages) {
+  if (logsCurrentPage > totalPages) {
     logsCurrentPage = totalPages;
   }
   if (logsCurrentPage < 1) logsCurrentPage = 1;
@@ -260,14 +251,14 @@ function renderLogsPagination(totalLines, totalPages) {
   if (!container) return;
 
   if (totalLines <= logsPageSize) {
-    container.innerHTML = `<span class="page-info">共 ${totalLines} 行 · 第 1/1 页</span>`;
+    container.innerHTML = `<span class="page-info">共 ${totalLines} 行 · 第 1/1 页 (最新)</span>`;
     return;
   }
 
   const current = logsCurrentPage;
   let html = `
-    <button class="ghost page-btn" data-log-page="first" ${current <= 1 ? "disabled" : ""} title="首页">首页</button>
-    <button class="ghost page-btn" data-log-page="prev" ${current <= 1 ? "disabled" : ""} title="上一页">
+    <button class="ghost page-btn" data-log-page="1" ${current <= 1 ? "disabled" : ""} title="跳转到最新 (第1页)">最新</button>
+    <button class="ghost page-btn" data-log-page="prev" ${current <= 1 ? "disabled" : ""} title="上一页 (较新)">
       <svg width="10" height="10" viewBox="0 0 10 10"><path d="M7 1L3 5l4 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
     </button>
   `;
@@ -282,10 +273,10 @@ function renderLogsPagination(totalLines, totalPages) {
   }
 
   html += `
-    <button class="ghost page-btn" data-log-page="next" ${current >= totalPages ? "disabled" : ""} title="下一页">
+    <button class="ghost page-btn" data-log-page="next" ${current >= totalPages ? "disabled" : ""} title="下一页 (较旧)">
       <svg width="10" height="10" viewBox="0 0 10 10"><path d="M3 1l4 4-4 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
     </button>
-    <button class="ghost page-btn" data-log-page="latest" ${current >= totalPages ? "disabled" : ""} title="最新一页">最新页</button>
+    <button class="ghost page-btn" data-log-page="${totalPages}" ${current >= totalPages ? "disabled" : ""} title="跳转到最早 (末页)">最早</button>
     <span class="page-info">共 ${totalLines} 行 · 第 ${current}/${totalPages} 页</span>
   `;
 
@@ -294,33 +285,20 @@ function renderLogsPagination(totalLines, totalPages) {
   container.querySelectorAll("[data-log-page]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const page = btn.dataset.logPage;
-      if (page === "first") {
-        logsCurrentPage = 1;
-        logsAutoFollow = false;
-      } else if (page === "prev" && logsCurrentPage > 1) {
+      if (page === "prev" && logsCurrentPage > 1) {
         logsCurrentPage--;
-        logsAutoFollow = false;
       } else if (page === "next" && logsCurrentPage < totalPages) {
         logsCurrentPage++;
-        if (logsCurrentPage === totalPages) logsAutoFollow = true;
-      } else if (page === "latest") {
-        logsCurrentPage = totalPages;
-        logsAutoFollow = true;
       } else if (Number(page)) {
         logsCurrentPage = Number(page);
-        logsAutoFollow = logsCurrentPage === totalPages;
       }
-      const check = $("logsAutoFollowCheck");
-      if (check) check.checked = logsAutoFollow;
       renderLogsView();
     });
   });
 }
 
 function scrollLogsToBottom() {
-  const totalPages = Math.max(1, Math.ceil(allLogs.length / logsPageSize));
-  logsCurrentPage = totalPages;
-  logsAutoFollow = true;
+  logsCurrentPage = 1;
   renderLogsView();
 }
 
@@ -1315,14 +1293,7 @@ function renderShopConfig() {
   $("shopEnable").checked = Boolean(shop.enable ?? false);
   $("shopRetrySeconds").value = shop.retry_seconds ?? 20;
   $("shopRetryInterval").value = shop.retry_interval ?? 0.4;
-  if ($("shopGoodsMetric")) {
-    $("shopGoodsMetric").textContent = shopGoodsLoading
-      ? "加载中"
-      : `${shopGoods.length} 件`;
-  }
-  if ($("shopPlansMetric")) {
-    $("shopPlansMetric").textContent = String((shop.plans || []).length);
-  }
+  // 横幅状态指标已全部清理
   renderShopGameFilter();
   renderShopGoods();
   renderShopGoodsLoadingState();
@@ -3007,20 +2978,7 @@ function extractRewardsFromRecord(record) {
 }
 
 function renderRecords(records) {
-  const total = records.length;
-  if ($("recordsTotalMetric")) $("recordsTotalMetric").textContent = String(total);
-  if (total > 0) {
-    const latest = records[0];
-    if ($("recordsLatestStatusMetric")) $("recordsLatestStatusMetric").innerHTML = getRecordStatusBadge(latest.status);
-    if ($("recordsLatestTimeMetric")) $("recordsLatestTimeMetric").textContent = formatTime(latest.timestamp).slice(5);
-    const succCount = records.filter((r) => r.status === "success").length;
-    const rate = Math.round((succCount / total) * 100);
-    if ($("recordsSuccessRateMetric")) $("recordsSuccessRateMetric").textContent = `${rate}%`;
-  } else {
-    if ($("recordsLatestStatusMetric")) $("recordsLatestStatusMetric").textContent = "-";
-    if ($("recordsLatestTimeMetric")) $("recordsLatestTimeMetric").textContent = "-";
-    if ($("recordsSuccessRateMetric")) $("recordsSuccessRateMetric").textContent = "-";
-  }
+  // 横幅状态指标已全部清理
 
   const todayStr = getTodayDateKey();
   if (!calSelectedDate) {
@@ -3395,16 +3353,7 @@ async function refreshStatus() {
   const runningCount = exchangeScheduler.running_count ?? runningPlans.size;
   shopRunningProgress = exchangeScheduler.running_progress || {};
 
-  if ($("shopScheduleMetric")) {
-    $("shopScheduleMetric").textContent = runningCount > 0
-      ? "兑换中"
-      : exchangeScheduler.enabled
-        ? "已启用"
-        : "已关闭";
-  }
-  if ($("shopNextRun")) {
-    $("shopNextRun").textContent = formatTime(exchangeScheduler.next_run);
-  }
+  // 商城横幅状态指标已全部清理
   if (
     shopExchange &&
     config &&
@@ -3645,19 +3594,11 @@ function bindEvents() {
     }
   });
   $("logsLatestPageBtn")?.addEventListener("click", () => {
-    const totalPages = Math.max(1, Math.ceil(allLogs.length / logsPageSize));
-    logsCurrentPage = totalPages;
-    logsAutoFollow = true;
-    if ($("logsAutoFollowCheck")) $("logsAutoFollowCheck").checked = true;
-    if ($("logsScrollMetric")) $("logsScrollMetric").textContent = "开启中";
+    logsCurrentPage = 1;
     renderLogsView();
   });
   $("logsAutoScrollBtn")?.addEventListener("click", () => {
-    const totalPages = Math.max(1, Math.ceil(allLogs.length / logsPageSize));
-    logsCurrentPage = totalPages;
-    logsAutoFollow = true;
-    if ($("logsAutoFollowCheck")) $("logsAutoFollowCheck").checked = true;
-    if ($("logsScrollMetric")) $("logsScrollMetric").textContent = "开启中";
+    logsCurrentPage = 1;
     renderLogsView();
     refreshStatus();
   });

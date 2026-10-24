@@ -148,20 +148,7 @@ function extractRewardsFromRecord(record) {
 }
 
 function renderRecords(records) {
-  const total = records.length;
-  if ($("recordsTotalMetric")) $("recordsTotalMetric").textContent = String(total);
-  if (total > 0) {
-    const latest = records[0];
-    if ($("recordsLatestStatusMetric")) $("recordsLatestStatusMetric").innerHTML = getRecordStatusBadge(latest.status);
-    if ($("recordsLatestTimeMetric")) $("recordsLatestTimeMetric").textContent = formatTime(latest.timestamp).slice(5);
-    const succCount = records.filter((r) => r.status === "success").length;
-    const rate = Math.round((succCount / total) * 100);
-    if ($("recordsSuccessRateMetric")) $("recordsSuccessRateMetric").textContent = `${rate}%`;
-  } else {
-    if ($("recordsLatestStatusMetric")) $("recordsLatestStatusMetric").textContent = "-";
-    if ($("recordsLatestTimeMetric")) $("recordsLatestTimeMetric").textContent = "-";
-    if ($("recordsSuccessRateMetric")) $("recordsSuccessRateMetric").textContent = "-";
-  }
+  // 横幅状态指标已全部清理
 
   const todayStr = getTodayDateKey();
   if (!calSelectedDate) {

@@ -91,11 +91,11 @@ test("getVisiblePages handles small and large total pages", () => {
 
 test("logs pagination calculates page slice without scrollbar overflow", () => {
   const dummyLogs = Array.from({ length: 50 }, (_, i) => `Line ${i + 1}`);
-  vm.runInContext("allLogs = " + JSON.stringify(dummyLogs) + "; logsPageSize = 18; logsCurrentPage = 1; logsAutoFollow = false;", ui);
-  vm.runInContext("renderLogsView()", ui);
+  vm.runInContext("updateLogs(" + JSON.stringify(dummyLogs) + "); logsPageSize = 18; logsCurrentPage = 1;", ui);
   const logContent = vm.runInContext("document.getElementById('logs').textContent", ui);
   const lines = logContent.split("\n");
   assert.equal(lines.length, 18);
-  assert.equal(lines[0], "Line 1");
-  assert.equal(lines[17], "Line 18");
+  // 倒序排列，第一页首行应为最新日志（Line 50）
+  assert.equal(lines[0], "Line 50");
+  assert.equal(lines[17], "Line 33");
 });

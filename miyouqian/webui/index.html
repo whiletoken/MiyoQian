@@ -308,24 +308,7 @@
       </section>
 
       <section class="view-panel is-hidden" data-view-panel="records">
-        <section class="status-grid records-status" aria-label="任务执行记录概览">
-          <div class="metric">
-            <span>记录总数</span>
-            <strong id="recordsTotalMetric">0</strong>
-          </div>
-          <div class="metric">
-            <span>最近状态</span>
-            <strong id="recordsLatestStatusMetric">-</strong>
-          </div>
-          <div class="metric">
-            <span>最近时间</span>
-            <strong id="recordsLatestTimeMetric">-</strong>
-          </div>
-          <div class="metric">
-            <span>执行成功率</span>
-            <strong id="recordsSuccessRateMetric">-</strong>
-          </div>
-        </section>
+
 
         <section class="calendar-records-layout">
           <!-- 左侧：打卡日历卡片 -->
@@ -382,24 +365,7 @@
       </section>
 
       <section class="view-panel is-hidden" data-view-panel="shop">
-        <section class="status-grid shop-status" aria-label="商品兑换状态">
-          <div class="metric">
-            <span>自动兑换</span>
-            <strong id="shopScheduleMetric">-</strong>
-          </div>
-          <div class="metric">
-            <span>下次兑换</span>
-            <strong id="shopNextRun">-</strong>
-          </div>
-          <div class="metric">
-            <span>商品数量</span>
-            <strong id="shopGoodsMetric">刷新后显示</strong>
-          </div>
-          <div class="metric">
-            <span>计划数量</span>
-            <strong id="shopPlansMetric">-</strong>
-          </div>
-        </section>
+
 
         <section class="shop-layout">
           <div class="shop-main">
@@ -495,24 +461,7 @@
       </section>
     
       <section class="view-panel is-hidden" data-view-panel="logs">
-        <section class="status-grid logs-status" aria-label="日志状态概览">
-          <div class="metric">
-            <span>日志总行数</span>
-            <strong id="logsTotalMetric">0 行</strong>
-          </div>
-          <div class="metric">
-            <span>自动滚动</span>
-            <strong id="logsScrollMetric">开启中</strong>
-          </div>
-          <div class="metric">
-            <span>最新日志时间</span>
-            <strong id="logsLatestTimeMetric">-</strong>
-          </div>
-          <div class="metric">
-            <span>输出通道</span>
-            <strong id="logsChannelMetric">系统控制台</strong>
-          </div>
-        </section>
+
 
         <section class="logs-layout panel">
           <div class="panel-head logs-head">
@@ -534,9 +483,9 @@
                 <input id="logsAutoFollowCheck" type="checkbox" checked />
                 <span>自动定位最新页</span>
               </label>
-              <button class="ghost btn-sm" id="logsLatestPageBtn" type="button" title="直接跳转至最新日志页">
+              <button class="ghost btn-sm" id="logsLatestPageBtn" type="button" title="返回第1页 (最新日志)">
                 <svg><use href="#i-refresh"></use></svg>
-                <span>最新页</span>
+                <span>第1页 (最新)</span>
               </button>
               <button class="ghost btn-sm" id="logsClearViewBtn" type="button" title="清空视窗日志">
                 <svg><use href="#i-trash"></use></svg>

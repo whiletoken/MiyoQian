@@ -16,16 +16,7 @@ async function refreshStatus() {
   const runningCount = exchangeScheduler.running_count ?? runningPlans.size;
   shopRunningProgress = exchangeScheduler.running_progress || {};
 
-  if ($("shopScheduleMetric")) {
-    $("shopScheduleMetric").textContent = runningCount > 0
-      ? "兑换中"
-      : exchangeScheduler.enabled
-        ? "已启用"
-        : "已关闭";
-  }
-  if ($("shopNextRun")) {
-    $("shopNextRun").textContent = formatTime(exchangeScheduler.next_run);
-  }
+  // 商城横幅状态指标已全部清理
   if (
     shopExchange &&
     config &&
@@ -266,19 +257,11 @@ function bindEvents() {
     }
   });
   $("logsLatestPageBtn")?.addEventListener("click", () => {
-    const totalPages = Math.max(1, Math.ceil(allLogs.length / logsPageSize));
-    logsCurrentPage = totalPages;
-    logsAutoFollow = true;
-    if ($("logsAutoFollowCheck")) $("logsAutoFollowCheck").checked = true;
-    if ($("logsScrollMetric")) $("logsScrollMetric").textContent = "开启中";
+    logsCurrentPage = 1;
     renderLogsView();
   });
   $("logsAutoScrollBtn")?.addEventListener("click", () => {
-    const totalPages = Math.max(1, Math.ceil(allLogs.length / logsPageSize));
-    logsCurrentPage = totalPages;
-    logsAutoFollow = true;
-    if ($("logsAutoFollowCheck")) $("logsAutoFollowCheck").checked = true;
-    if ($("logsScrollMetric")) $("logsScrollMetric").textContent = "开启中";
+    logsCurrentPage = 1;
     renderLogsView();
     refreshStatus();
   });

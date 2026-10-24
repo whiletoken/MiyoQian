@@ -8,14 +8,7 @@ function renderShopConfig() {
   $("shopEnable").checked = Boolean(shop.enable ?? false);
   $("shopRetrySeconds").value = shop.retry_seconds ?? 20;
   $("shopRetryInterval").value = shop.retry_interval ?? 0.4;
-  if ($("shopGoodsMetric")) {
-    $("shopGoodsMetric").textContent = shopGoodsLoading
-      ? "加载中"
-      : `${shopGoods.length} 件`;
-  }
-  if ($("shopPlansMetric")) {
-    $("shopPlansMetric").textContent = String((shop.plans || []).length);
-  }
+  // 横幅状态指标已全部清理
   renderShopGameFilter();
   renderShopGoods();
   renderShopGoodsLoadingState();
