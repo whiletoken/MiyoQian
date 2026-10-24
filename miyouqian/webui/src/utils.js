@@ -99,22 +99,39 @@ async function copyText(text) {
   if (!copied) throw new Error("复制失败，请在规范弹窗中手动选中复制");
 }
 
+function getVisiblePages(current, total) {
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+  const pages = [];
+  pages.push(1);
+  let left = current - 1;
+  let right = current + 1;
+  if (current <= 3) {
+    left = 2;
+    right = 4;
+  }
+  if (current >= total - 2) {
+    left = total - 3;
+    right = total - 1;
+  }
+  if (left > 2) pages.push("...");
+  for (let i = left; i <= right; i++) {
+    if (i > 1 && i < total) pages.push(i);
+  }
+  if (right < total - 1) pages.push("...");
+  pages.push(total);
+  return pages;
+}
+
 function updateLogs(logs) {
-  const logBox = $("logs");
-  if (!logBox) return;
-  const wasPinned = logsPinnedToBottom || isScrolledNearBottom(logBox);
-  const nextText = logs.join("\n");
-  if (logBox.textContent !== nextText) {
-    logBox.textContent = nextText;
-    if (wasPinned) {
-      requestAnimationFrame(() => scrollLogsToBottom());
-    }
-  }
+  allLogs = logs || [];
+  renderLogsView();
   if ($("logsTotalMetric")) {
-    $("logsTotalMetric").textContent = `${logs.length} 行`;
+    $("logsTotalMetric").textContent = `${allLogs.length} 行`;
   }
-  if ($("logsLatestTimeMetric") && logs.length > 0) {
-    const lastLine = logs[logs.length - 1];
+  if ($("logsLatestTimeMetric") && allLogs.length > 0) {
+    const lastLine = allLogs[allLogs.length - 1];
     const match = lastLine.match(/^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/);
     if (match) {
       $("logsLatestTimeMetric").textContent = match[1].slice(5);
@@ -122,14 +139,97 @@ function updateLogs(logs) {
   }
 }
 
-function scrollLogsToBottom() {
+function renderLogsView() {
   const logBox = $("logs");
-  logBox.scrollTop = logBox.scrollHeight;
-  logsPinnedToBottom = true;
+  if (!logBox) return;
+  const totalLines = allLogs.length;
+  const totalPages = Math.max(1, Math.ceil(totalLines / logsPageSize));
+
+  if (logsAutoFollow || logsCurrentPage > totalPages) {
+    logsCurrentPage = totalPages;
+  }
+  if (logsCurrentPage < 1) logsCurrentPage = 1;
+
+  const startIndex = (logsCurrentPage - 1) * logsPageSize;
+  const endIndex = Math.min(totalLines, startIndex + logsPageSize);
+  const pageLines = allLogs.slice(startIndex, endIndex);
+
+  logBox.textContent = pageLines.length ? pageLines.join("\n") : "（暂无运行日志）";
+
+  renderLogsPagination(totalLines, totalPages);
+}
+
+function renderLogsPagination(totalLines, totalPages) {
+  const container = $("logsPagination");
+  if (!container) return;
+
+  if (totalLines <= logsPageSize) {
+    container.innerHTML = `<span class="page-info">共 ${totalLines} 行 · 第 1/1 页</span>`;
+    return;
+  }
+
+  const current = logsCurrentPage;
+  let html = `
+    <button class="ghost page-btn" data-log-page="first" ${current <= 1 ? "disabled" : ""} title="首页">首页</button>
+    <button class="ghost page-btn" data-log-page="prev" ${current <= 1 ? "disabled" : ""} title="上一页">
+      <svg width="10" height="10" viewBox="0 0 10 10"><path d="M7 1L3 5l4 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+    </button>
+  `;
+
+  const pages = getVisiblePages(current, totalPages);
+  for (const p of pages) {
+    if (p === "...") {
+      html += `<span class="page-ellipsis">…</span>`;
+    } else {
+      html += `<button class="ghost page-btn ${p === current ? "is-active" : ""}" data-log-page="${p}">${p}</button>`;
+    }
+  }
+
+  html += `
+    <button class="ghost page-btn" data-log-page="next" ${current >= totalPages ? "disabled" : ""} title="下一页">
+      <svg width="10" height="10" viewBox="0 0 10 10"><path d="M3 1l4 4-4 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+    </button>
+    <button class="ghost page-btn" data-log-page="latest" ${current >= totalPages ? "disabled" : ""} title="最新一页">最新页</button>
+    <span class="page-info">共 ${totalLines} 行 · 第 ${current}/${totalPages} 页</span>
+  `;
+
+  container.innerHTML = html;
+
+  container.querySelectorAll("[data-log-page]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const page = btn.dataset.logPage;
+      if (page === "first") {
+        logsCurrentPage = 1;
+        logsAutoFollow = false;
+      } else if (page === "prev" && logsCurrentPage > 1) {
+        logsCurrentPage--;
+        logsAutoFollow = false;
+      } else if (page === "next" && logsCurrentPage < totalPages) {
+        logsCurrentPage++;
+        if (logsCurrentPage === totalPages) logsAutoFollow = true;
+      } else if (page === "latest") {
+        logsCurrentPage = totalPages;
+        logsAutoFollow = true;
+      } else if (Number(page)) {
+        logsCurrentPage = Number(page);
+        logsAutoFollow = logsCurrentPage === totalPages;
+      }
+      const check = $("logsAutoFollowCheck");
+      if (check) check.checked = logsAutoFollow;
+      renderLogsView();
+    });
+  });
+}
+
+function scrollLogsToBottom() {
+  const totalPages = Math.max(1, Math.ceil(allLogs.length / logsPageSize));
+  logsCurrentPage = totalPages;
+  logsAutoFollow = true;
+  renderLogsView();
 }
 
 function isScrolledNearBottom(element) {
-  return element.scrollHeight - element.scrollTop - element.clientHeight <= 24;
+  return true;
 }
 
 async function withButtonLoading(button, loadingText, task) {

@@ -10,10 +10,23 @@ const source = fs.readFileSync(
 );
 assert.match(source, /\nstartApp\(\);\s*$/);
 
+const mockElements = {};
 const ui = vm.createContext({
   document: {
     querySelectorAll: () => [],
-    getElementById: () => ({ addEventListener() {}, textContent: "", innerHTML: "", classList: { add() {}, remove() {}, toggle() {} } }),
+    getElementById: (id) => {
+      if (!mockElements[id]) {
+        mockElements[id] = {
+          id,
+          textContent: "",
+          innerHTML: "",
+          classList: { add() {}, remove() {}, toggle() {} },
+          addEventListener() {},
+          querySelectorAll: () => [],
+        };
+      }
+      return mockElements[id];
+    },
     addEventListener() {},
   },
   console: console,
@@ -63,4 +76,26 @@ test("default shopSelectedGame is hk4e (原神)", () => {
   const games = vm.runInContext("shopGames", ui);
   assert.equal(selected, "hk4e");
   assert.ok(games.some((g) => g.key === "hk4e" && g.name.includes("原神")));
+});
+
+test("getVisiblePages handles small and large total pages", () => {
+  const pagesSmall = ui.getVisiblePages(1, 5);
+  assert.deepEqual([...pagesSmall], [1, 2, 3, 4, 5]);
+
+  const pagesLarge = ui.getVisiblePages(10, 20);
+  assert.ok(pagesLarge.includes(1));
+  assert.ok(pagesLarge.includes(20));
+  assert.ok(pagesLarge.includes(10));
+  assert.ok(pagesLarge.includes("..."));
+});
+
+test("logs pagination calculates page slice without scrollbar overflow", () => {
+  const dummyLogs = Array.from({ length: 50 }, (_, i) => `Line ${i + 1}`);
+  vm.runInContext("allLogs = " + JSON.stringify(dummyLogs) + "; logsPageSize = 18; logsCurrentPage = 1; logsAutoFollow = false;", ui);
+  vm.runInContext("renderLogsView()", ui);
+  const logContent = vm.runInContext("document.getElementById('logs').textContent", ui);
+  const lines = logContent.split("\n");
+  assert.equal(lines.length, 18);
+  assert.equal(lines[0], "Line 1");
+  assert.equal(lines[17], "Line 18");
 });

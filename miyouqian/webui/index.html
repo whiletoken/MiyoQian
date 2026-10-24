@@ -99,53 +99,38 @@
             日志
           </button>
         </div>
-        <div class="actions" data-view-actions="dashboard">
-          <button class="ghost" id="refreshBtn" type="button" title="刷新">
-            <svg><use href="#i-refresh"></use></svg>
-            <span>刷新</span>
-          </button>
-          <button class="primary" id="runBtn" type="button" title="立即执行">
-            <svg><use href="#i-play"></use></svg>
-            <span>立即执行</span>
-          </button>
-        </div>
-        <div class="actions is-hidden" data-view-actions="records">
-          <button class="ghost" id="recordsRefreshBtn" type="button" title="刷新记录">
-            <svg><use href="#i-refresh"></use></svg>
-            <span>刷新</span>
-          </button>
-          <button class="ghost" id="recordsClearBtn" type="button" title="清空历史记录">
-            <svg><use href="#i-trash"></use></svg>
-            <span>清空</span>
-          </button>
-        </div>
-        <div class="actions is-hidden" data-view-actions="logs">
-          <button class="ghost" id="logsAutoScrollBtn" type="button" title="滚动到底部">
-            <svg><use href="#i-refresh"></use></svg>
-            <span>置底</span>
-          </button>
+        <div class="topbar-actions">
+          <div class="actions" data-view-actions="dashboard">
+            <button class="ghost" id="refreshBtn" type="button" title="刷新">
+              <svg><use href="#i-refresh"></use></svg>
+              <span>刷新</span>
+            </button>
+            <button class="primary" id="runBtn" type="button" title="立即执行">
+              <svg><use href="#i-play"></use></svg>
+              <span>立即执行</span>
+            </button>
+          </div>
+          <div class="actions is-hidden" data-view-actions="records">
+            <button class="ghost" id="recordsRefreshBtn" type="button" title="刷新记录">
+              <svg><use href="#i-refresh"></use></svg>
+              <span>刷新</span>
+            </button>
+            <button class="ghost" id="recordsClearBtn" type="button" title="清空历史记录">
+              <svg><use href="#i-trash"></use></svg>
+              <span>清空</span>
+            </button>
+          </div>
+          <div class="actions is-hidden" data-view-actions="logs">
+            <button class="ghost" id="logsAutoScrollBtn" type="button" title="刷新并跳转最新日志页">
+              <svg><use href="#i-refresh"></use></svg>
+              <span>最新页</span>
+            </button>
+          </div>
         </div>
       </header>
 
       <section class="view-panel" data-view-panel="dashboard">
-        <section class="status-grid" aria-label="运行状态">
-          <div class="metric">
-            <span>账号</span>
-            <strong id="accountMetric">-</strong>
-          </div>
-          <div class="metric">
-            <span>自动调度</span>
-            <strong id="scheduleMetric">-</strong>
-          </div>
-          <div class="metric">
-            <span>下次执行</span>
-            <strong id="nextRun">-</strong>
-          </div>
-          <div class="metric">
-            <span>最近结果</span>
-            <strong id="lastResult">-</strong>
-          </div>
-        </section>
+
 
                 <section class="dashboard-layout">
           <!-- 左栏：账号管理与凭据 -->
@@ -536,19 +521,31 @@
               <p>实时捕获后台定时调度、任务签到执行、商品兑换及服务网络请求</p>
             </div>
             <div class="logs-toolbar">
-              <label class="check-row compact">
-                <input id="logsAutoScrollCheck" type="checkbox" checked />
-                <span>自动滚动到底部</span>
+              <label class="logs-page-size-wrap" title="选择每页显示行数">
+                <span>每页</span>
+                <select id="logsPageSizeSelect" class="logs-page-select">
+                  <option value="15">15 行</option>
+                  <option value="18" selected>18 行</option>
+                  <option value="25">25 行</option>
+                  <option value="35">35 行</option>
+                </select>
               </label>
-              <button class="ghost btn-sm" id="logsScrollBottomBtn" type="button" title="立即滚动到底部">
-                <span>滚动到底部</span>
+              <label class="check-row compact" title="新日志到达时自动定位至最新一页">
+                <input id="logsAutoFollowCheck" type="checkbox" checked />
+                <span>自动定位最新页</span>
+              </label>
+              <button class="ghost btn-sm" id="logsLatestPageBtn" type="button" title="直接跳转至最新日志页">
+                <svg><use href="#i-refresh"></use></svg>
+                <span>最新页</span>
               </button>
               <button class="ghost btn-sm" id="logsClearViewBtn" type="button" title="清空视窗日志">
+                <svg><use href="#i-trash"></use></svg>
                 <span>清空视窗</span>
               </button>
             </div>
           </div>
           <pre id="logs" class="logs logs-tab-pre"></pre>
+          <div id="logsPagination" class="logs-pagination"></div>
         </section>
       </section>
     </main>

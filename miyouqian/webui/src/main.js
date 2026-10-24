@@ -10,28 +10,7 @@ async function refreshStatus() {
   const shopExchange = status.shop_exchange || null;
   const login = status.login || {};
   const logs = status.logs || [];
-  const accounts = config?.accounts || [];
-  const loggedIn = accounts.filter((account) => account.stuid).length;
-  $("accountMetric").textContent = `${loggedIn}/${accounts.length}`;
-  $("scheduleMetric").textContent = scheduler.running
-    ? "执行中"
-    : scheduler.jitter_waiting
-      ? "延后中"
-      : scheduler.enabled
-        ? (scheduler.thread_alive === false ? "异常停止" : "已启用")
-        : "已关闭";
-  $("nextRun").textContent = scheduler.jitter_waiting
-    ? `预计 ${formatTime(scheduler.jitter_until || scheduler.next_run)}`
-    : formatTime(scheduler.next_run);
-  const latestRec = status.latest_record;
-  if (latestRec) {
-    const statusLabel = latestRec.status === "success"
-      ? "全部成功"
-      : (latestRec.status === "partial" ? "部分成功" : (latestRec.status === "failed" ? "执行失败" : "已跳过"));
-    $("lastResult").textContent = `${statusLabel} (${formatTime(latestRec.timestamp).slice(5)})`;
-  } else {
-    $("lastResult").textContent = latestResultText(scheduler, login, logs);
-  }
+  // 状态横幅已按需移除
 
   const runningPlans = new Set(exchangeScheduler.running_plans || []);
   const runningCount = exchangeScheduler.running_count ?? runningPlans.size;
@@ -121,7 +100,11 @@ function switchView(view) {
   } else if (activeView === "records") {
     loadRecords().catch((error) => showToast(error.message));
   } else if (activeView === "logs") {
-    refreshStatus().then(() => scrollLogsToBottom()).catch(() => {});
+    refreshStatus().then(() => {
+      logsAutoFollow = true;
+      if ($("logsAutoFollowCheck")) $("logsAutoFollowCheck").checked = true;
+      renderLogsView();
+    }).catch(() => {});
   }
 }
 
@@ -222,9 +205,7 @@ function bindEvents() {
   $("runBtn").addEventListener("click", () =>
     runNow().catch((error) => showToast(error.message)),
   );
-  $("logs").addEventListener("scroll", () => {
-    logsPinnedToBottom = isScrolledNearBottom($("logs"));
-  });
+  // 日志现已支持分页无滚动条展示
   $("addAccountBtn").addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -272,19 +253,44 @@ function bindEvents() {
     renderDateDetail(calSelectedDate);
   });
 
-  // 日志页面工具栏事件
-  $("logsAutoScrollCheck")?.addEventListener("change", (e) => {
-    logsPinnedToBottom = Boolean(e.target.checked);
+  // 日志页面工具栏与翻页事件
+  $("logsAutoFollowCheck")?.addEventListener("change", (e) => {
+    logsAutoFollow = Boolean(e.target.checked);
     if ($("logsScrollMetric")) {
-      $("logsScrollMetric").textContent = logsPinnedToBottom ? "开启中" : "已暂停";
+      $("logsScrollMetric").textContent = logsAutoFollow ? "开启中" : "已暂停";
     }
-    if (logsPinnedToBottom) scrollLogsToBottom();
+    if (logsAutoFollow) {
+      const totalPages = Math.max(1, Math.ceil(allLogs.length / logsPageSize));
+      logsCurrentPage = totalPages;
+      renderLogsView();
+    }
   });
-  $("logsScrollBottomBtn")?.addEventListener("click", () => {
-    scrollLogsToBottom();
+  $("logsLatestPageBtn")?.addEventListener("click", () => {
+    const totalPages = Math.max(1, Math.ceil(allLogs.length / logsPageSize));
+    logsCurrentPage = totalPages;
+    logsAutoFollow = true;
+    if ($("logsAutoFollowCheck")) $("logsAutoFollowCheck").checked = true;
+    if ($("logsScrollMetric")) $("logsScrollMetric").textContent = "开启中";
+    renderLogsView();
+  });
+  $("logsAutoScrollBtn")?.addEventListener("click", () => {
+    const totalPages = Math.max(1, Math.ceil(allLogs.length / logsPageSize));
+    logsCurrentPage = totalPages;
+    logsAutoFollow = true;
+    if ($("logsAutoFollowCheck")) $("logsAutoFollowCheck").checked = true;
+    if ($("logsScrollMetric")) $("logsScrollMetric").textContent = "开启中";
+    renderLogsView();
+    refreshStatus();
+  });
+  $("logsPageSizeSelect")?.addEventListener("change", (e) => {
+    logsPageSize = Number(e.target.value) || 18;
+    const totalPages = Math.max(1, Math.ceil(allLogs.length / logsPageSize));
+    if (logsCurrentPage > totalPages) logsCurrentPage = totalPages;
+    renderLogsView();
   });
   $("logsClearViewBtn")?.addEventListener("click", () => {
-    if ($("logs")) $("logs").textContent = "";
+    allLogs = [];
+    renderLogsView();
     showToast("视窗日志已清空");
   });
 }

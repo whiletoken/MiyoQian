@@ -159,30 +159,7 @@ function renderShopPagination() {
   });
 }
 
-function getVisiblePages(current, total) {
-  if (total <= 7) {
-    return Array.from({ length: total }, (_, i) => i + 1);
-  }
-  const pages = [];
-  pages.push(1);
-  let left = current - 1;
-  let right = current + 1;
-  if (current <= 3) {
-    left = 2;
-    right = 4;
-  }
-  if (current >= total - 2) {
-    left = total - 3;
-    right = total - 1;
-  }
-  if (left > 2) pages.push("...");
-  for (let i = left; i <= right; i++) {
-    if (i > 1 && i < total) pages.push(i);
-  }
-  if (right < total - 1) pages.push("...");
-  pages.push(total);
-  return pages;
-}
+// getVisiblePages is defined in utils.js
 
 function shopGoodCard(good, index) {
   const soldOut = isShopGoodSoldOut(good);
