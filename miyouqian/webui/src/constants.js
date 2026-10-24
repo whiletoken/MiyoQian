@@ -59,8 +59,11 @@ let editingCaptchaProviders = new Set();
 let logsPinnedToBottom = true;
 let activeView = "dashboard";
 let shopGoods = [];
-let shopGames = [{ key: "", name: "全部分区" }];
-let shopSelectedGame = "";
+let shopGames = [
+  { key: "hk4e", name: "原神" },
+  { key: "", name: "全部分区" },
+];
+let shopSelectedGame = "hk4e";
 let shopOpenPlans = new Set();
 let shopRunningProgress = {};
 let shopRequestInFlight = false;
@@ -72,5 +75,8 @@ let shopFilterStatus = "";        // 商品状态筛选："" 全部 / sold_out /
 let shopCurrentPage = 1;          // 当前页码，从1开始
 const SHOP_PAGE_SIZE = 4;        // 每页显示商品数
 let taskRecords = [];
+let calCurrentYear = new Date().getFullYear();
+let calCurrentMonth = new Date().getMonth();
+let calSelectedDate = "";
 
 const $ = (id) => document.getElementById(id);

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import copy
+import sys
 import time
 from datetime import datetime
 from typing import Any, Callable
@@ -12,6 +13,16 @@ from ..core.config import find_account_index_by_stuid, save_config
 from ..core.http import ApiClient
 from ..tasks.shop_exchange import ShopExchange
 from .web_diff import display_account_name
+
+
+def _get_api_client():
+    mod = sys.modules.get("miyouqian.service.web")
+    return getattr(mod, "ApiClient", ApiClient)
+
+
+def _get_shop_exchange():
+    mod = sys.modules.get("miyouqian.service.web")
+    return getattr(mod, "ShopExchange", ShopExchange)
 
 
 class WebShopMixin:
@@ -32,8 +43,8 @@ class WebShopMixin:
         with self.lock:
             config = copy.deepcopy(self.config)
         try:
-            with ApiClient(timeout=20.0) as client:
-                result = ShopExchange(client, config, emit=lambda message: self.log(message, "exchange")).goods(game=game)
+            with _get_api_client()(timeout=20.0) as client:
+                result = _get_shop_exchange()(client, config, emit=lambda message: self.log(message, "exchange")).goods(game=game)
         except Exception as exc:
             self.log(f"商品列表获取失败: {game_label}，{exc}", "exchange")
             raise
@@ -46,8 +57,8 @@ class WebShopMixin:
         with self.lock:
             config = copy.deepcopy(self.config)
         try:
-            with ApiClient(timeout=20.0) as client:
-                result = ShopExchange(client, config).good_detail(goods_id)
+            with _get_api_client()(timeout=20.0) as client:
+                result = _get_shop_exchange()(client, config).good_detail(goods_id)
         except Exception as exc:
             self.log(f"商品详情获取失败: {goods_id}，{exc}", "exchange")
             raise
@@ -59,8 +70,8 @@ class WebShopMixin:
         with self.lock:
             config = copy.deepcopy(self.config)
         try:
-            with ApiClient(timeout=20.0) as client:
-                device_fp = ShopExchange(client, config).fetch_device_fp()
+            with _get_api_client()(timeout=20.0) as client:
+                device_fp = _get_shop_exchange()(client, config).fetch_device_fp()
         except Exception as exc:
             self.log(f"商品兑换 device_fp 获取失败: {exc}", "exchange")
             raise
@@ -76,8 +87,8 @@ class WebShopMixin:
         self.log(f"开始获取兑换账号信息: {account_name}，game_biz={game_biz or '无'}", "exchange")
         with self.lock:
             config = copy.deepcopy(self.config)
-        with ApiClient(timeout=20.0) as client:
-            shop = ShopExchange(client, config, account)
+        with _get_api_client()(timeout=20.0) as client:
+            shop = _get_shop_exchange()(client, config, account)
             result: dict[str, Any] = {"points": {}, "addresses": [], "roles": []}
             try:
                 result["points"] = shop.points()
@@ -186,8 +197,8 @@ class WebShopMixin:
 
         start_time = time.time()
         try:
-            with ApiClient(timeout=15.0) as client:
-                result = ShopExchange(
+            with _get_api_client()(timeout=15.0) as client:
+                result = _get_shop_exchange()(
                     client,
                     config,
                     account,

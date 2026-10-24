@@ -68,10 +68,19 @@ class DailyScheduler:
                     self._log_next_run_on_recompute = new_signature[1] != old_signature[1]
         self._wake.set()
 
-    def run_now(self, trigger: str = "manual") -> bool:
+    def run_now(self, trigger: str = "manual", force: bool = False) -> bool:
         with self._lock:
             if self._running:
                 return False
+            if not force and self.get_records_fn:
+                try:
+                    records = self.get_records_fn()
+                    today_records = self._get_today_signin_records(records, datetime.now().date())
+                    if any(r.get("status") == "success" for r in today_records):
+                        self.log("【打卡签到】查询验证今日已成功完成签到，已签到不再重复签到（如需强制执行请传入 force）")
+                        return False
+                except Exception as exc:
+                    self.log(f"打卡签到前查询验证异常: {exc}")
             self._running = True
         threading.Thread(
             target=lambda: self._run_once(trigger=trigger),
@@ -274,6 +283,20 @@ class DailyScheduler:
                             self._next_run = self._compute_next_base_run(schedule, tomorrow=True, log_change=False)
                             continue
                         due_run = self._next_run
+
+                    # 定时打卡前查询验证：若今日已成功完成签到，跳过本次定时签到
+                    if self.get_records_fn:
+                        try:
+                            records = self.get_records_fn()
+                            today_records = self._get_today_signin_records(records, datetime.now().date())
+                            if any(r.get("status") == "success" for r in today_records):
+                                self.log("【定时打卡签到】查询验证今日已成功完成签到，已签到不再重复签到，跳过本次定时任务")
+                                with self._lock:
+                                    self._next_run = self._compute_next_base_run(schedule, tomorrow=True, log_change=False)
+                                continue
+                        except Exception as exc:
+                            self.log(f"定时签到前查询验证异常: {exc}")
+
                     if not self._wait_jitter(schedule, due_run):
                         continue
                     with self._lock:

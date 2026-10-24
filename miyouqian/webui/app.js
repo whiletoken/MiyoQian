@@ -1,7 +1,8 @@
-﻿// ===========================================================================
+// ===========================================================================
 // 米游签 Web 控制台前端脚本 (由 miyouqian/webui/src/ 自动构建)
 // 模块源码位于 miyouqian/webui/src/，请勿在此单文件直接新增业务逻辑！
 // ===========================================================================
+
 
 // --- Module: constants.js ---
 // ===========================================================================
@@ -65,8 +66,11 @@ let editingCaptchaProviders = new Set();
 let logsPinnedToBottom = true;
 let activeView = "dashboard";
 let shopGoods = [];
-let shopGames = [{ key: "", name: "全部分区" }];
-let shopSelectedGame = "";
+let shopGames = [
+  { key: "hk4e", name: "原神" },
+  { key: "", name: "全部分区" },
+];
+let shopSelectedGame = "hk4e";
 let shopOpenPlans = new Set();
 let shopRunningProgress = {};
 let shopRequestInFlight = false;
@@ -78,6 +82,9 @@ let shopFilterStatus = "";        // 商品状态筛选："" 全部 / sold_out /
 let shopCurrentPage = 1;          // 当前页码，从1开始
 const SHOP_PAGE_SIZE = 4;        // 每页显示商品数
 let taskRecords = [];
+let calCurrentYear = new Date().getFullYear();
+let calCurrentMonth = new Date().getMonth();
+let calSelectedDate = "";
 
 const $ = (id) => document.getElementById(id);
 
@@ -186,12 +193,23 @@ async function copyText(text) {
 
 function updateLogs(logs) {
   const logBox = $("logs");
+  if (!logBox) return;
   const wasPinned = logsPinnedToBottom || isScrolledNearBottom(logBox);
   const nextText = logs.join("\n");
   if (logBox.textContent !== nextText) {
     logBox.textContent = nextText;
     if (wasPinned) {
       requestAnimationFrame(() => scrollLogsToBottom());
+    }
+  }
+  if ($("logsTotalMetric")) {
+    $("logsTotalMetric").textContent = `${logs.length} 行`;
+  }
+  if ($("logsLatestTimeMetric") && logs.length > 0) {
+    const lastLine = logs[logs.length - 1];
+    const match = lastLine.match(/^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/);
+    if (match) {
+      $("logsLatestTimeMetric").textContent = match[1].slice(5);
     }
   }
 }
@@ -1649,7 +1667,8 @@ async function addShopPlan(good) {
 }
 
 async function loadShopGoods() {
-  const game = $("shopGameFilter")?.value ?? shopSelectedGame;
+  const filterVal = $("shopGameFilter")?.value;
+  const game = (filterVal !== undefined && filterVal !== null) ? filterVal : shopSelectedGame;
   const loadSeq = ++shopGoodsLoadSeq;
   shopSelectedGame = game;
   shopGoodsLoading = true;
@@ -1663,6 +1682,10 @@ async function loadShopGoods() {
     shopCurrentPage = 1;
     if (Array.isArray(data.games) && data.games.length) {
       shopGames = data.games;
+      if (!shopGames.some((g) => g.key === shopSelectedGame)) {
+        const genshin = data.games.find((g) => g.key === "hk4e" || g.name?.includes("原神"));
+        if (genshin) shopSelectedGame = genshin.key;
+      }
     }
     showToast("商品列表已刷新");
   } finally {
@@ -2694,12 +2717,12 @@ function loginStatusText(status) {
 
 // --- Module: records_view.js ---
 // ===========================================================================
-// 任务执行记录与数据统计展示
+// 任务执行记录、打卡日历与奖励详情展示
 // ===========================================================================
 
 async function loadRecords() {
   try {
-    const data = await api("/api/records?limit=50");
+    const data = await api("/api/records?limit=100");
     taskRecords = data.records || [];
     renderRecords(taskRecords);
   } catch (error) {
@@ -2718,6 +2741,26 @@ async function clearRecords() {
   } catch (error) {
     showToast(`清空记录失败: ${error.message}`);
   }
+}
+
+function getRecordDateKey(record) {
+  if (record.timestamp) {
+    const match = String(record.timestamp).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+  }
+  if (record.id) {
+    const match = String(record.id).match(/^(\d{4})(\d{2})(\d{2})/);
+    if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+  }
+  return "";
+}
+
+function getTodayDateKey() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
 function getRecordStatusBadge(status) {
@@ -2759,11 +2802,70 @@ function getTriggerBadge(trigger) {
   }
 }
 
-function renderRecords(records) {
-  const container = $("recordsList");
-  const emptyBox = $("recordsEmpty");
-  if (!container) return;
+function getRecordsByDate() {
+  const map = new Map();
+  for (const record of taskRecords) {
+    const dateKey = getRecordDateKey(record);
+    if (!dateKey) continue;
+    if (!map.has(dateKey)) {
+      map.set(dateKey, []);
+    }
+    map.get(dateKey).push(record);
+  }
+  return map;
+}
 
+function extractRewardsFromRecord(record) {
+  const rewards = [];
+  const seen = new Set();
+
+  function addReward(title, subtitle, type, icon) {
+    const key = `${title}__${subtitle}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    rewards.push({ title, subtitle, type, icon: icon || "🎁" });
+  }
+
+  // 1. 从 accounts 的 stages 中提取成功项
+  const accounts = record.accounts || [];
+  for (const acc of accounts) {
+    const accName = acc.name || "未命名账号";
+    for (const stage of acc.stages || []) {
+      for (const item of stage.success_items || []) {
+        const itemStr = String(item).trim();
+        // 游戏奖励: 「原石」x20 等
+        const awardMatch = itemStr.match(/「([^」]+)」x(\d+|\?)/);
+        if (awardMatch) {
+          const gamePart = itemStr.split(" ")[0] || "";
+          addReward(`「${awardMatch[1]}」x${awardMatch[2]}`, `${accName} · ${gamePart || stage.stage}`, "game", "💎");
+        } else if (itemStr.includes("分钟免费时长")) {
+          const timeMatch = itemStr.match(/获得\s*(\d+)\s*分钟免费时长/);
+          const minutes = timeMatch ? timeMatch[1] : "";
+          addReward(`云游戏免费时长 +${minutes || "?"}分钟`, `${accName} · ${itemStr.split(" ")[0] || "云游戏"}`, "cloud", "⚡");
+        } else if (itemStr.includes("已签到")) {
+          const gamePart = itemStr.split(" ")[0] || "";
+          addReward(itemStr.replace(/^.+已签到\s*/, "") || "已完成签到", `${accName} · ${gamePart}`, "game", "✓");
+        } else if (stage.stage === "米游币商品兑换") {
+          addReward(`兑换成功：${itemStr}`, `${accName} · 米游社兑换`, "exchange", "🛍️");
+        }
+      }
+    }
+  }
+
+  // 2. 从 logs/messages 中提取米游币增量等信息
+  for (const msg of record.messages || []) {
+    if (msg.includes("实际已获得") || msg.includes("本次新增")) {
+      const match = msg.match(/本次新增\s*(\d+)/) || msg.match(/实际已获得\s*(\d+)/);
+      if (match && Number(match[1]) > 0) {
+        addReward(`米游币 +${match[1]}`, "米游币社区任务奖励", "bbs", "🪙");
+      }
+    }
+  }
+
+  return rewards;
+}
+
+function renderRecords(records) {
   const total = records.length;
   if ($("recordsTotalMetric")) $("recordsTotalMetric").textContent = String(total);
   if (total > 0) {
@@ -2779,14 +2881,228 @@ function renderRecords(records) {
     if ($("recordsSuccessRateMetric")) $("recordsSuccessRateMetric").textContent = "-";
   }
 
-  if (total === 0) {
+  const todayStr = getTodayDateKey();
+  if (!calSelectedDate) {
+    const recordsMap = getRecordsByDate();
+    if (recordsMap.has(todayStr)) {
+      calSelectedDate = todayStr;
+    } else if (records.length > 0) {
+      calSelectedDate = getRecordDateKey(records[0]) || todayStr;
+    } else {
+      calSelectedDate = todayStr;
+    }
+  }
+
+  // 渲染打卡日历
+  renderCalendar();
+
+  // 渲染选中日期的记录与奖励详情
+  renderDateDetail(calSelectedDate);
+
+  // 保持旧容器 recordsList 存在（若DOM有此元素，填充内容防空指针）
+  const container = $("recordsList");
+  if (container) {
     container.innerHTML = "";
-    emptyBox?.classList.remove("is-hidden");
+  }
+}
+
+function renderCalendar() {
+  const label = $("calMonthLabel");
+  const grid = $("calendarDaysGrid");
+  if (!label || !grid) return;
+
+  label.textContent = `${calCurrentYear}年 ${calCurrentMonth + 1}月`;
+
+  const recordsMap = getRecordsByDate();
+  const todayStr = getTodayDateKey();
+
+  // 当前月第一天星期几 (0:周一, 6:周日)
+  const firstDay = new Date(calCurrentYear, calCurrentMonth, 1);
+  const startDayOfWeek = (firstDay.getDay() + 6) % 7;
+
+  // 当前月总天数
+  const daysInMonth = new Date(calCurrentYear, calCurrentMonth + 1, 0).getDate();
+
+  // 上个月总天数
+  const daysInPrevMonth = new Date(calCurrentYear, calCurrentMonth, 0).getDate();
+
+  let html = "";
+
+  // 填充上月占位格
+  for (let i = startDayOfWeek - 1; i >= 0; i--) {
+    const prevDay = daysInPrevMonth - i;
+    html += `<div class="cal-day-cell is-other-month"><span class="cal-day-num">${prevDay}</span></div>`;
+  }
+
+  // 填充当月日期
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dateStr = `${calCurrentYear}-${String(calCurrentMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const dayRecords = recordsMap.get(dateStr) || [];
+    const isToday = dateStr === todayStr;
+    const isSelected = dateStr === calSelectedDate;
+    const hasRecords = dayRecords.length > 0;
+
+    let status = "";
+    let hasRewards = false;
+    if (hasRecords) {
+      const anySucc = dayRecords.some((r) => r.status === "success");
+      const anyFail = dayRecords.some((r) => r.status === "failed");
+      const anyPartial = dayRecords.some((r) => r.status === "partial");
+      const allSkip = dayRecords.every((r) => r.status === "skipped");
+      if (anyFail && anySucc) status = "partial";
+      else if (anyFail) status = "failed";
+      else if (anyPartial) status = "partial";
+      else if (anySucc) status = "success";
+      else if (allSkip) status = "skipped";
+      else status = "success";
+
+      for (const rec of dayRecords) {
+        const rewards = extractRewardsFromRecord(rec);
+        if (rewards.length > 0) {
+          hasRewards = true;
+          break;
+        }
+      }
+    }
+
+    const classes = [
+      "cal-day-cell",
+      isToday ? "is-today" : "",
+      isSelected ? "is-selected" : "",
+      hasRecords ? "has-records" : "",
+      status ? `status-${status}` : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    let indicatorHtml = "";
+    if (hasRecords) {
+      indicatorHtml = `
+        <div class="cal-day-indicator">
+          <span class="cal-dot ${status}"></span>
+          ${hasRewards ? '<span class="cal-gift-dot" title="当日有奖励">🎁</span>' : ""}
+        </div>
+      `;
+    }
+
+    html += `
+      <div class="${classes}" data-cal-date="${dateStr}">
+        <span class="cal-day-num">${day}</span>
+        ${indicatorHtml}
+      </div>
+    `;
+  }
+
+  grid.innerHTML = html;
+
+  // 绑定点击事件
+  grid.querySelectorAll("[data-cal-date]").forEach((cell) => {
+    cell.addEventListener("click", () => {
+      const targetDate = cell.dataset.calDate;
+      if (!targetDate) return;
+      calSelectedDate = targetDate;
+      renderCalendar();
+      renderDateDetail(calSelectedDate);
+    });
+  });
+}
+
+function renderDateDetail(dateStr) {
+  const title = $("calDetailDateTitle");
+  const subtitle = $("calDetailDateSubtitle");
+  const badge = $("calDetailDateBadge");
+  const rewardsContainer = $("calDetailRewardsSection");
+  const recordsContainer = $("calDetailRecordsList");
+
+  if (!title || !recordsContainer) return;
+
+  const parts = dateStr.split("-");
+  const dateFormatted = parts.length === 3 ? `${parts[0]}年${Number(parts[1])}月${Number(parts[2])}日` : dateStr;
+  title.textContent = `${dateFormatted} 打卡详情`;
+
+  const recordsMap = getRecordsByDate();
+  const dayRecords = recordsMap.get(dateStr) || [];
+
+  if (subtitle) {
+    subtitle.textContent = dayRecords.length
+      ? `当日累计打卡 ${dayRecords.length} 次`
+      : "该日期暂未记录打卡签到";
+  }
+
+  if (badge) {
+    if (dayRecords.length) {
+      const anySucc = dayRecords.some((r) => r.status === "success");
+      const anyFail = dayRecords.some((r) => r.status === "failed");
+      const status = anyFail && anySucc ? "partial" : (anyFail ? "failed" : (anySucc ? "success" : "skipped"));
+      badge.innerHTML = getRecordStatusBadge(status);
+    } else {
+      badge.innerHTML = '<span class="record-badge skipped">无记录</span>';
+    }
+  }
+
+  // 1. 渲染当日奖励详情
+  if (rewardsContainer) {
+    if (!dayRecords.length) {
+      rewardsContainer.innerHTML = "";
+    } else {
+      const allRewards = [];
+      const seen = new Set();
+      for (const rec of dayRecords) {
+        const list = extractRewardsFromRecord(rec);
+        for (const item of list) {
+          const k = `${item.title}_${item.subtitle}`;
+          if (!seen.has(k)) {
+            seen.add(k);
+            allRewards.push(item);
+          }
+        }
+      }
+
+      if (allRewards.length > 0) {
+        rewardsContainer.innerHTML = `
+          <div class="rewards-block">
+            <div class="rewards-block-head">
+              <strong>当日获取奖励 (${allRewards.length} 项)</strong>
+            </div>
+            <div class="rewards-grid">
+              ${allRewards
+                .map(
+                  (r) => `
+                <div class="reward-card ${r.type}">
+                  <span class="reward-icon">${r.icon}</span>
+                  <div class="reward-content">
+                    <strong class="reward-title">${escapeHtml(r.title)}</strong>
+                    <span class="reward-subtitle">${escapeHtml(r.subtitle)}</span>
+                  </div>
+                </div>
+              `,
+                )
+                .join("")}
+            </div>
+          </div>
+        `;
+      } else {
+        rewardsContainer.innerHTML = `
+          <div class="rewards-empty-card">
+            <span>当日打卡已执行完成，无额外道具或时长入账（已达到签到上限或社区已签）。</span>
+          </div>
+        `;
+      }
+    }
+  }
+
+  // 2. 渲染当日打卡执行卡片
+  if (!dayRecords.length) {
+    recordsContainer.innerHTML = `
+      <div class="empty-state cal-detail-empty">
+        <p>该日期暂无打卡记录</p>
+        <span>请在左侧日历点击带有状态标记的日期查看历史打卡记录与奖励详情。</span>
+      </div>
+    `;
     return;
   }
-  emptyBox?.classList.add("is-hidden");
 
-  container.innerHTML = records
+  recordsContainer.innerHTML = dayRecords
     .map((record, index) => {
       const accounts = record.accounts || [];
       const messages = record.messages || [];
@@ -3004,9 +3320,18 @@ async function refreshStatus() {
   lastLoginStatus = login.status || "";
 }
 
-async function runNow() {
+async function runNow(force = false) {
   await autoSaveConfig();
-  await api("/api/run", { method: "POST", body: "{}" });
+  const res = await api("/api/run", {
+    method: "POST",
+    body: JSON.stringify({ force }),
+  });
+  if (res?.already_signed) {
+    if (confirm(`${res.message || "今日已完成打卡签到"}。是否强制重新签到？`)) {
+      await runNow(true);
+    }
+    return;
+  }
   showToast("任务已启动");
   await refreshStatus();
 }
@@ -3032,6 +3357,8 @@ function switchView(view) {
     loadShopGoods().catch((error) => showToast(error.message));
   } else if (activeView === "records") {
     loadRecords().catch((error) => showToast(error.message));
+  } else if (activeView === "logs") {
+    scrollLogsToBottom();
   }
 }
 
@@ -3155,6 +3482,48 @@ function bindEvents() {
   $("shopGameFilter")?.addEventListener("change", () =>
     loadShopGoods().catch((error) => showToast(error.message)),
   );
+
+  // 打卡日历事件
+  $("calPrevMonth")?.addEventListener("click", () => {
+    calCurrentMonth--;
+    if (calCurrentMonth < 0) {
+      calCurrentMonth = 11;
+      calCurrentYear--;
+    }
+    renderCalendar();
+  });
+  $("calNextMonth")?.addEventListener("click", () => {
+    calCurrentMonth++;
+    if (calCurrentMonth > 11) {
+      calCurrentMonth = 0;
+      calCurrentYear++;
+    }
+    renderCalendar();
+  });
+  $("calTodayBtn")?.addEventListener("click", () => {
+    const now = new Date();
+    calCurrentYear = now.getFullYear();
+    calCurrentMonth = now.getMonth();
+    calSelectedDate = getTodayDateKey();
+    renderCalendar();
+    renderDateDetail(calSelectedDate);
+  });
+
+  // 日志页面工具栏事件
+  $("logsAutoScrollCheck")?.addEventListener("change", (e) => {
+    logsPinnedToBottom = Boolean(e.target.checked);
+    if ($("logsScrollMetric")) {
+      $("logsScrollMetric").textContent = logsPinnedToBottom ? "开启中" : "已暂停";
+    }
+    if (logsPinnedToBottom) scrollLogsToBottom();
+  });
+  $("logsScrollBottomBtn")?.addEventListener("click", () => {
+    scrollLogsToBottom();
+  });
+  $("logsClearViewBtn")?.addEventListener("click", () => {
+    if ($("logs")) $("logs").textContent = "";
+    showToast("视窗日志已清空");
+  });
 }
 
 bindEvents();

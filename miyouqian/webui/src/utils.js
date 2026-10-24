@@ -101,12 +101,23 @@ async function copyText(text) {
 
 function updateLogs(logs) {
   const logBox = $("logs");
+  if (!logBox) return;
   const wasPinned = logsPinnedToBottom || isScrolledNearBottom(logBox);
   const nextText = logs.join("\n");
   if (logBox.textContent !== nextText) {
     logBox.textContent = nextText;
     if (wasPinned) {
       requestAnimationFrame(() => scrollLogsToBottom());
+    }
+  }
+  if ($("logsTotalMetric")) {
+    $("logsTotalMetric").textContent = `${logs.length} 行`;
+  }
+  if ($("logsLatestTimeMetric") && logs.length > 0) {
+    const lastLine = logs[logs.length - 1];
+    const match = lastLine.match(/^(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})/);
+    if (match) {
+      $("logsLatestTimeMetric").textContent = match[1].slice(5);
     }
   }
 }

@@ -213,6 +213,35 @@ class DailySchedulerTest(unittest.TestCase):
         self.assertFalse(retried)
         self.assertEqual(len(run_called), 2)
 
+    def test_run_now_verifies_today_records_and_skips_if_signed(self) -> None:
+        records: list[dict] = [
+            {
+                "id": "rec_today",
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "status": "success",
+                "trigger": "scheduled",
+            }
+        ]
+        run_called = []
+        scheduler = DailyScheduler(
+            self.config,
+            lambda *args, **kwargs: run_called.append(1) or ["ok"],
+            self.log,
+            get_records_fn=lambda: records,
+        )
+
+        # 默认 force=False，已签到不应再次签到
+        started = scheduler.run_now(force=False)
+        self.assertFalse(started)
+        self.assertEqual(len(run_called), 0)
+        self.assertTrue(any("已签到不再重复签到" in log for log in self.logs))
+
+        # 指定 force=True，应允许强制执行
+        started_force = scheduler.run_now(force=True)
+        self.assertTrue(started_force)
+        time.sleep(0.1)
+        self.assertEqual(len(run_called), 1)
+
 
 class WebAppLogAndConfigReloadTest(unittest.TestCase):
     def setUp(self) -> None:

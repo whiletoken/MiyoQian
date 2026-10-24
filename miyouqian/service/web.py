@@ -35,6 +35,8 @@ from .web_diff import (
 from .web_login import WebLoginMixin
 from .web_server import AUTH_COOKIE, WEB_ROOT, Handler, create_server, first_query, serve
 from .web_shop import WebShopMixin
+from ..core.http import ApiClient
+from ..tasks.shop_exchange import ShopExchange
 
 __all__ = [
     "AUTH_COOKIE",

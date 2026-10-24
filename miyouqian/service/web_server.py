@@ -71,7 +71,10 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json({"records": records, "total": len(records)})
                 return
             if path == "/api/shop/goods":
-                self.send_json(self.app.shop_goods(str(first_query(query, "game"))))
+                game_param = first_query(query, "game")
+                if game_param is None:
+                    game_param = "hk4e"
+                self.send_json(self.app.shop_goods(str(game_param)))
                 return
             if path == "/api/shop/good-detail":
                 self.send_json(self.app.shop_good_detail(str(first_query(query, "goods_id"))))
@@ -104,7 +107,17 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if path == "/api/run":
                 self.app.log("收到手动执行请求", "web")
-                started = self.app.scheduler.run_now()
+                force = bool(payload.get("force", False)) if isinstance(payload, dict) else False
+                if not force and self.app.scheduler.get_records_fn:
+                    try:
+                        records = self.app.scheduler.get_records_fn()
+                        today_records = self.app.scheduler._get_today_signin_records(records, datetime.now().date())
+                        if any(r.get("status") == "success" for r in today_records):
+                            self.send_json({"ok": False, "already_signed": True, "message": "今日已完成打卡签到，无需重复签到"})
+                            return
+                    except Exception:
+                        pass
+                started = self.app.scheduler.run_now(force=force)
                 if not started:
                     self.app.log("手动执行请求被拒绝：任务正在运行", "scheduler")
                     self.send_error_json("任务正在运行", HTTPStatus.CONFLICT)

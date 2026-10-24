@@ -524,7 +524,8 @@ async function addShopPlan(good) {
 }
 
 async function loadShopGoods() {
-  const game = $("shopGameFilter")?.value ?? shopSelectedGame;
+  const filterVal = $("shopGameFilter")?.value;
+  const game = (filterVal !== undefined && filterVal !== null) ? filterVal : shopSelectedGame;
   const loadSeq = ++shopGoodsLoadSeq;
   shopSelectedGame = game;
   shopGoodsLoading = true;
@@ -538,6 +539,10 @@ async function loadShopGoods() {
     shopCurrentPage = 1;
     if (Array.isArray(data.games) && data.games.length) {
       shopGames = data.games;
+      if (!shopGames.some((g) => g.key === shopSelectedGame)) {
+        const genshin = data.games.find((g) => g.key === "hk4e" || g.name?.includes("原神"));
+        if (genshin) shopSelectedGame = genshin.key;
+      }
     }
     showToast("商品列表已刷新");
   } finally {

@@ -37,7 +37,9 @@ def check_tests(root: pathlib.Path) -> bool:
     )
     if res.returncode != 0:
         print("[-] 单元测试未通过！")
-        print(res.stderr or res.stdout)
+        out = res.stderr or res.stdout
+        enc = sys.stdout.encoding or "utf-8"
+        print(out.encode(enc, errors="replace").decode(enc))
         return False
     print("[+] 单元测试全部通过！")
     return True

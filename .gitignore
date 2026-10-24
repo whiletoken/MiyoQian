@@ -31,4 +31,5 @@ tests/*
 !tests/test_task_isolation.py
 !tests/test_http_retry.py
 !tests/test_webui_shop_plans.js
+!tests/test_webui_calendar_records.js
 !tests/test_web_service.py

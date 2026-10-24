@@ -82,9 +82,18 @@ async function refreshStatus() {
   lastLoginStatus = login.status || "";
 }
 
-async function runNow() {
+async function runNow(force = false) {
   await autoSaveConfig();
-  await api("/api/run", { method: "POST", body: "{}" });
+  const res = await api("/api/run", {
+    method: "POST",
+    body: JSON.stringify({ force }),
+  });
+  if (res?.already_signed) {
+    if (confirm(`${res.message || "今日已完成打卡签到"}。是否强制重新签到？`)) {
+      await runNow(true);
+    }
+    return;
+  }
   showToast("任务已启动");
   await refreshStatus();
 }
@@ -110,6 +119,8 @@ function switchView(view) {
     loadShopGoods().catch((error) => showToast(error.message));
   } else if (activeView === "records") {
     loadRecords().catch((error) => showToast(error.message));
+  } else if (activeView === "logs") {
+    scrollLogsToBottom();
   }
 }
 
@@ -233,6 +244,48 @@ function bindEvents() {
   $("shopGameFilter")?.addEventListener("change", () =>
     loadShopGoods().catch((error) => showToast(error.message)),
   );
+
+  // 打卡日历事件
+  $("calPrevMonth")?.addEventListener("click", () => {
+    calCurrentMonth--;
+    if (calCurrentMonth < 0) {
+      calCurrentMonth = 11;
+      calCurrentYear--;
+    }
+    renderCalendar();
+  });
+  $("calNextMonth")?.addEventListener("click", () => {
+    calCurrentMonth++;
+    if (calCurrentMonth > 11) {
+      calCurrentMonth = 0;
+      calCurrentYear++;
+    }
+    renderCalendar();
+  });
+  $("calTodayBtn")?.addEventListener("click", () => {
+    const now = new Date();
+    calCurrentYear = now.getFullYear();
+    calCurrentMonth = now.getMonth();
+    calSelectedDate = getTodayDateKey();
+    renderCalendar();
+    renderDateDetail(calSelectedDate);
+  });
+
+  // 日志页面工具栏事件
+  $("logsAutoScrollCheck")?.addEventListener("change", (e) => {
+    logsPinnedToBottom = Boolean(e.target.checked);
+    if ($("logsScrollMetric")) {
+      $("logsScrollMetric").textContent = logsPinnedToBottom ? "开启中" : "已暂停";
+    }
+    if (logsPinnedToBottom) scrollLogsToBottom();
+  });
+  $("logsScrollBottomBtn")?.addEventListener("click", () => {
+    scrollLogsToBottom();
+  });
+  $("logsClearViewBtn")?.addEventListener("click", () => {
+    if ($("logs")) $("logs").textContent = "";
+    showToast("视窗日志已清空");
+  });
 }
 
 bindEvents();
