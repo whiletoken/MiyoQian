@@ -53,8 +53,9 @@ class DailyScheduler:
         with self._lock:
             self._schedule_signature = new_signature
             if new_signature != old_signature:
-                self._next_run = None
-                self._log_next_run_on_recompute = new_signature[1] != old_signature[1]
+                if new_signature[0] != old_signature[0] or new_signature[1] != old_signature[1]:
+                    self._next_run = None
+                    self._log_next_run_on_recompute = new_signature[1] != old_signature[1]
         self._wake.set()
 
     def run_now(self, trigger: str = "manual") -> bool:
@@ -96,15 +97,18 @@ class DailyScheduler:
                     self._wake.clear()
                     continue
                 with self._lock:
-                    if self._next_run is None or self._next_run <= datetime.now() - timedelta(minutes=5):
+                    if self._next_run is None:
                         log_change = self._log_next_run_on_recompute
                         self._log_next_run_on_recompute = False
                         self._next_run = self._compute_next_base_run(schedule, log_change=log_change)
                     next_run = self._next_run
                 wait_seconds = max((next_run - datetime.now()).total_seconds(), 0)
-                if self._wake.wait(timeout=min(wait_seconds, 60)):
+                if wait_seconds > 0:
+                    if self._wake.wait(timeout=min(wait_seconds, 60)):
+                        self._wake.clear()
+                        continue
+                else:
                     self._wake.clear()
-                    continue
                 if datetime.now() >= next_run:
                     with self._lock:
                         if self._running:
@@ -212,6 +216,8 @@ class DailyScheduler:
                         current_signature = self._schedule_signature
                     if current_signature != initial_signature:
                         self.log("检测到调度配置变更，取消当前随机延后等待并重新规划")
+                        with self._lock:
+                            self._next_run = None
                         return False
         finally:
             with self._lock:
@@ -223,6 +229,7 @@ class DailyScheduler:
         return (
             bool(schedule.get("enable", True)),
             str(schedule.get("time", "09:00")),
+            int(schedule.get("jitter_minutes", 45) or 0),
         )
 
 
