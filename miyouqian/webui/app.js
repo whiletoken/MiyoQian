@@ -1474,7 +1474,7 @@ function shopGoodCard(good, index) {
         <div class="shop-good-meta">
           <span>${exchangeLabel} ${escapeHtml(good.exchange_time || "-")}</span>
           <span class="${soldOut ? "sold-out" : ""}">${soldOut ? "已售罄" : `库存 ${escapeHtml(good.stock || "-")}`}</span>
-          <span>${escapeHtml(String(good.price ?? 0))} 米游币</span>
+          <span class="shop-price-tag">🪙 ${escapeHtml(String(good.price ?? 0))} 米游币</span>
           <span>${escapeHtml(good.limit || "-")}</span>
         </div>
       </div>

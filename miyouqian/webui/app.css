@@ -121,9 +121,10 @@ body {
 }
 
 .shop-pagination .page-btn.is-active {
-  background: var(--primary-color, #3b82f6);
-  color: #fff;
-  border-color: var(--primary-color, #3b82f6);
+  background: var(--primary);
+  color: #3b2604;
+  border-color: #c99335;
+  font-weight: 700;
 }
 
 .shop-pagination .page-btn:disabled {
@@ -2188,8 +2189,8 @@ textarea:focus {
 }
 
 .rewards-block {
-  background: rgba(223, 183, 108, 0.06);
-  border: 1px solid rgba(223, 183, 108, 0.28);
+  background: rgba(223, 183, 108, 0.08);
+  border: 1px solid rgba(223, 183, 108, 0.35);
   border-radius: 10px;
   padding: 14px;
   margin-bottom: 18px;
@@ -2197,8 +2198,8 @@ textarea:focus {
 
 .rewards-block-head {
   font-size: 13px;
-  color: #ffd166;
-  font-weight: 600;
+  color: #78350f;
+  font-weight: 700;
   margin-bottom: 10px;
   display: flex;
   align-items: center;
@@ -2217,14 +2218,16 @@ textarea:focus {
   gap: 10px;
   padding: 10px 12px;
   border-radius: 8px;
-  background: rgba(0, 0, 0, 0.25);
+  background: #ffffff;
   border: 1px solid var(--line);
-  transition: transform 0.15s;
+  box-shadow: 0 2px 6px rgba(60, 45, 25, 0.04);
+  transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
 
 .reward-card:hover {
   transform: translateY(-1px);
-  border-color: rgba(0, 210, 255, 0.35);
+  border-color: var(--line-strong);
+  box-shadow: 0 4px 12px rgba(60, 45, 25, 0.08);
 }
 
 .reward-icon {
@@ -2241,8 +2244,8 @@ textarea:focus {
 
 .reward-title {
   font-size: 13px;
-  color: #f8fafc;
-  font-weight: 600;
+  color: #2a3342;
+  font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2259,7 +2262,7 @@ textarea:focus {
 .rewards-empty-card {
   padding: 12px 14px;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.02);
+  background: #faf8f5;
   border: 1px dashed var(--line);
   color: var(--muted);
   font-size: 13px;
@@ -2366,9 +2369,9 @@ textarea:focus {
 
 .logs-pagination .page-btn.is-active {
   background: var(--primary);
-  color: #fff;
-  border-color: var(--primary);
-  font-weight: 650;
+  color: #3b2604;
+  border-color: #c99335;
+  font-weight: 700;
 }
 
 .logs-pagination .page-btn:disabled {
@@ -2464,36 +2467,58 @@ textarea:focus {
 .account-points-badge {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   margin-top: 4px;
   margin-left: 17px;
   padding: 3px 12px;
   font-size: 12px;
-  font-weight: 700;
-  color: #f7e6c4;
-  background: linear-gradient(135deg, rgba(223, 183, 108, 0.25) 0%, rgba(195, 150, 68, 0.12) 100%);
-  border: 1px solid rgba(223, 183, 108, 0.45);
+  font-weight: 750;
+  color: #592e07;
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 60%, #fcd34d 100%);
+  border: 1px solid #d97706;
   border-radius: 9999px;
   cursor: pointer;
-  min-height: 24px;
+  min-height: 25px;
   line-height: 1.4;
-  transition: all 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   width: fit-content;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 1px 4px rgba(180, 83, 9, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 .account-points-badge:hover {
-  background: linear-gradient(135deg, rgba(223, 183, 108, 0.4) 0%, rgba(195, 150, 68, 0.2) 100%);
-  border-color: #ffd88a;
+  background: linear-gradient(135deg, #fde68a 0%, #fcd34d 100%);
+  border-color: #b45309;
+  color: #381a02;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(223, 183, 108, 0.35);
+  box-shadow: 0 3px 8px rgba(180, 83, 9, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.account-points-badge:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(180, 83, 9, 0.2);
 }
 
 .account-points-badge .points-icon {
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1;
+  filter: drop-shadow(0 1px 1px rgba(180, 83, 9, 0.25));
 }
 
 .account-points-badge .points-val {
   font-size: 12px;
+  font-weight: 750;
+  color: #592e07;
+  letter-spacing: 0.2px;
+}
+
+.account-points-badge:hover .points-val {
+  color: #381a02;
+}
+
+/* 商城价格标签高对比度适配 */
+.shop-good-meta span.shop-price-tag {
+  color: #78350f;
+  background: #fef3c7;
+  border-color: #f59e0b;
+  font-weight: 700;
 }
