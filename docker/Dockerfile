@@ -1,22 +1,25 @@
 ARG BASE_IMAGE=docker.m.daocloud.io/library/python:3.11-slim-bookworm
-ARG UV_IMAGE=ghcr.nju.edu.cn/astral-sh/uv:0.7.3
 
 # ==================== 构建阶段 ====================
-FROM ${UV_IMAGE} AS uv-bin
-
 FROM ${BASE_IMAGE} AS builder
 
 # 替换 Debian 软件源为阿里云镜像，加速系统工具依赖安装
 RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || \
     sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list 2>/dev/null || true
 
-# 复制 uv 二进制工具
-COPY --from=uv-bin /uv /usr/local/bin/uv
-
 WORKDIR /build
 
 # 国内源参数（默认阿里云镜像源，支持清华源等覆盖；若需官方源可传 https://pypi.org）
 ARG PYPI_MIRROR=https://mirrors.aliyun.com/pypi
+
+# 直接通过 PyPI 镜像源安装 uv，避免依赖外部 ghcr 镜像站（如已不可用的 ghcr.nju.edu.cn）
+RUN set -e; \
+    if [ -n "${PYPI_MIRROR}" ] && [ "${PYPI_MIRROR}" != "https://pypi.org" ]; then \
+    PYPI_URL="${PYPI_MIRROR%/}"; \
+    PYPI_URL="${PYPI_URL%/simple}"; \
+    export PIP_INDEX_URL="${PYPI_URL}/simple"; \
+    fi; \
+    pip install --no-cache-dir "uv>=0.7.3"
 
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
     UV_LINK_MODE=copy \
