@@ -46,8 +46,10 @@ def build_cookie(uid: str, mid: str, ltoken: str, cookie_token: str) -> str:
         f"account_id_v2={uid}",
         f"account_mid_v2={mid}",
         f"cookie_token={cookie_token}",
+        f"cookie_token_v2={cookie_token}",
         f"ltmid_v2={mid}",
         f"ltoken={ltoken}",
+        f"ltoken_v2={ltoken}",
         f"ltuid={uid}",
         f"ltuid_v2={uid}",
         f"login_uid={uid}",
@@ -62,3 +64,9 @@ def replace_or_append_cookie_value(cookie: str, key: str, value: str) -> str:
     if re.search(pattern, cookie):
         return re.sub(pattern, rf"\g<1>{value}", cookie, count=1)
     return f"{cookie.rstrip('; ')}; {key}={value}"
+
+
+def update_cookie_tokens(cookie: str, cookie_token: str) -> str:
+    """同步更新 cookie 中的 cookie_token 与 cookie_token_v2。"""
+    updated = replace_or_append_cookie_value(cookie, "cookie_token", cookie_token)
+    return replace_or_append_cookie_value(updated, "cookie_token_v2", cookie_token)

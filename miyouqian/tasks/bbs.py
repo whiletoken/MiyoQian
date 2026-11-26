@@ -163,7 +163,7 @@ class BbsTasks(BaseTask):
             headers=self._web_headers(),
         )
         if data.get("retcode") == -100 and not retried:
-            if refresh_cookie_token(self.client, self.account):
+            if refresh_cookie_token(self.client, self.account, self.device):
                 return self._task_state(retried=True)
         return data.get("data", {}) if data.get("retcode") == 0 else {}
 

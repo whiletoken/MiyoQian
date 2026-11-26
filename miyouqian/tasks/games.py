@@ -169,7 +169,7 @@ class GameCheckin(BaseTask):
             headers=self._headers(game),
         )
         if data.get("retcode") == -100 and not retried:
-            if refresh_cookie_token(self.client, self.account):
+            if refresh_cookie_token(self.client, self.account, self.device):
                 return self._get_roles(game, retried=True)
         if data.get("retcode") != 0:
             return []

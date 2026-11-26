@@ -1,15 +1,17 @@
 # -*- coding: utf-8 -*-
 """接口常量与业务映射。"""
 
-BBS_VERSION = "2.106.2"
+BBS_VERSION = "2.117.0"
 QR_LOGIN_VERSION = "2.102.1"
 PASSPORT_APP_VERSION = "2.90.1"
+PASSPORT_SDK_VERSION = "2.44.0"
 
-BBS_SALT = "idMMaGYmVgPzh3wxmWudUXKUPGidO7GM"
-BBS_WEB_SALT = "G1ktdwFL4IyGkHuuWSmz0wUe9Db9scyK"
+BBS_SALT = "9c7b896d7483e9070b27c55f1959c4d5"
+BBS_WEB_SALT = "4751cb5557bfad5e249e58462c39fb0a"
 BBS_X6_SALT = "t0qEgfub6cvueAPgR5m9aQWWVciEer7v"
 PASSPORT_X4_SALT = "xV8v4Qu54lUKrEYFZkJhB8cuOh9Asafs"
 PASSPORT_APP_SALT = "dDIQHbKOdaPaLuvQKVzUzqdeCaxjtaPV"
+PASSPORT_EXCHANGE_SALT = "JwYDpKvLj6MrMqqYU6jTKF17KNO2PXoS"
 
 PASSPORT_APP_ID = "bll8iq97cem8"
 QRCODE_APP_APP_ID = "ddxf5dufpuyo"
@@ -53,6 +55,7 @@ LTOKEN_BY_STOKEN_URL = f"{PASSPORT_API}/account/auth/api/getLTokenBySToken"
 COOKIE_TOKEN_BY_STOKEN_URL = (
     f"{PASSPORT_API}/account/auth/api/getCookieAccountInfoBySToken"
 )
+TOKEN_EXCHANGE_URL = f"{PASSPORT_API}/account/ma-cn-session/app/exchange"
 COOKIE_TOKEN_REFRESH_URL = f"{TAKUMI_API}/auth/api/getCookieAccountInfoBySToken"
 
 DEFAULT_MOBILE_UA = (

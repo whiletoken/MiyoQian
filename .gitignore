@@ -33,3 +33,4 @@ tests/*
 !tests/test_webui_shop_plans.js
 !tests/test_webui_calendar_records.js
 !tests/test_web_service.py
+!tests/test_passport_exchange.py

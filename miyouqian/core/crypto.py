@@ -30,27 +30,28 @@ def ds(web: bool = False) -> str:
     return f"{t},{r},{sign}"
 
 
-def ds_x6(query: str = "", body: str = "") -> str:
+def _ds_v2(salt: str, query: str = "", body: str = "", rand: str | None = None) -> str:
     t = str(int(time.time()))
-    r = str(random.randint(100001, 200000))
-    sign = md5(f"salt={c.BBS_X6_SALT}&t={t}&r={r}&b={body}&q={query}")
+    r = rand if rand is not None else str(random.randint(100001, 200000))
+    sign = md5(f"salt={salt}&t={t}&r={r}&b={body}&q={query}")
     return f"{t},{r},{sign}"
+
+
+def ds_x6(query: str = "", body: str = "") -> str:
+    return _ds_v2(c.BBS_X6_SALT, query=query, body=body)
 
 
 def ds_x4(query: str = "", body: str = "") -> str:
-    t = str(int(time.time()))
-    r = str(random.randint(100000, 200000))
-    sign = md5(f"salt={c.PASSPORT_X4_SALT}&t={t}&r={r}&b={body}&q={query}")
-    return f"{t},{r},{sign}"
+    return _ds_v2(c.PASSPORT_X4_SALT, query=query, body=body, rand=str(random.randint(100000, 200000)))
 
 
 def ds_app(body: str = "", query: str = "") -> str:
-    t = str(int(time.time()))
-    r = str(random.randint(100001, 200000))
-    b = body if body else ""
-    q = query if query else ""
-    sign = md5(f"salt={c.PASSPORT_APP_SALT}&t={t}&r={r}&b={b}&q={q}")
-    return f"{t},{r},{sign}"
+    return _ds_v2(c.PASSPORT_APP_SALT, query=query, body=body or "")
+
+
+def ds_passport(body: str = "", query: str = "") -> str:
+    """生成米哈游通行证 V2 换票接口（ma-cn-session/app/exchange）所需的 DS 签名。"""
+    return _ds_v2(c.PASSPORT_EXCHANGE_SALT, query=query, body=body, rand=random_text(6))
 
 
 def device_id(seed: str | None = None) -> str:

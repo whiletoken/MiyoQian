@@ -208,3 +208,11 @@
 在象牙浅色主题中，米游币徽章与价格标签必须使用深琥珀或深古铜文本（如 #592e07, #78350f，对比度>7:1），严禁使用浅金淡黄色字体导致与背景融为一体
 - **门禁校验**: 测试套件 100% 通过，工程规范校验通过。
 ---
+
+### [2026-11-26 20:10:57] FIX: 迁移 stoken 换票至通行证 V2 exchange 接口并同步 V2 Cookie
+- **记录者**: Antigravity Agent
+- **演进类型**: `fix`
+- **核心要点**:
+1. 米哈游旧版 GET 接口 getLTokenBySToken 失效返回 retcode=1002（系统请求失败，请返回重试），PassportLogin._get_ltoken/_get_cookie_token 统一迁移至 POST /account/ma-cn-session/app/exchange（dst_token_type=2 换取 ltoken，4 换取 cookie_token），并使用 PASSPORT_EXCHANGE_SALT 生成 DS 签名与 compact JSON 请求体。\n2. cookies.build_cookie 与 update_cookie_tokens 同步写入 ltoken/ltoken_v2 与 cookie_token/cookie_token_v2，保持新旧页面凭据一致；refresh_cookie_token 优先走 V2 换票并在缺少 mid 时保留旧接口回退。\n3. 同步更新 BBS_VERSION (2.117.0) 与对应的 BBS_SALT/BBS_WEB_SALT，并新增 test_passport_exchange.py 覆盖换票、DS 签名、不重试 POST 及 Cookie V2 同步。
+- **门禁校验**: 测试套件 100% 通过，工程规范校验通过。
+---
